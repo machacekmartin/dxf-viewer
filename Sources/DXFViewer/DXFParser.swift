@@ -185,6 +185,7 @@ private struct ParserState {
     var hatchPendingX: CGFloat? = nil       // 10 received, awaiting 20
     var hatchVertsLeft: Int = 0             // remaining 10/20 pairs in current path (set by code 93)
     var hatchPathIsPolyline = false
+    var hatchInBoundary = false             // true between code 92 and code 97
     var hatchInSeed = false                 // suppress 10/20 collection after code 98
     var hatchPattern: [HatchPatternLine] = []
     var hatchPendingLine: HatchPatternLine? = nil
@@ -223,6 +224,7 @@ private struct ParserState {
         hatchPendingX = nil
         hatchVertsLeft = 0
         hatchPathIsPolyline = false
+        hatchInBoundary = false
     }
     mutating func flushHatchPendingLine() {
         if let pl = hatchPendingLine {
@@ -238,7 +240,8 @@ private struct ParserState {
         splinePts = []; splineLastX = nil
         splineKnots = []; splineDegree = 3; splineFlags = 0
         hatchPaths = []; hatchCurrent = []; hatchPendingX = nil
-        hatchVertsLeft = 0; hatchPathIsPolyline = false; hatchInSeed = false
+        hatchVertsLeft = 0; hatchPathIsPolyline = false
+        hatchInBoundary = false; hatchInSeed = false
         hatchPattern = []; hatchPendingLine = nil
         hatchSolid = false; hatchScale = 1; hatchEntityAngle = 0
     }
@@ -353,16 +356,27 @@ private struct ParserState {
                 flushHatchPath()
                 let flags = Int(value) ?? 0
                 hatchPathIsPolyline = (flags & 2) != 0
+                hatchInBoundary = true
             case 93:
-                // Vertex count for current path (polyline) OR edge count (non-polyline; skipped).
-                hatchVertsLeft = hatchPathIsPolyline ? (Int(value) ?? 0) : 0
+                // Vertex count for current path (polyline) OR edge count (non-polyline).
+                // For polyline we cap collection by vertsLeft. For edge mode the count is
+                // not used (each edge contributes one 10/20 start point — see code 10).
+                if hatchPathIsPolyline { hatchVertsLeft = Int(value) ?? 0 }
+            case 97:
+                // End of boundary path (source-object-ID count follows). Stop collecting
+                // 10/20 so they aren't re-interpreted as boundary verts before the next 92.
+                hatchInBoundary = false
+                hatchVertsLeft = 0
             case 10:
                 if hatchInSeed { break }
                 if hatchPathIsPolyline && hatchVertsLeft > 0 {
                     hatchPendingX = CGFloat(Double(value) ?? 0)
-                } else if hatchPendingLine != nil {
-                    // Codes 10/20 don't appear in the entity-level pattern table for predefined
-                    // patterns, but guard anyway by ignoring outside boundary context.
+                } else if hatchInBoundary && !hatchPathIsPolyline {
+                    // Edge-defined boundary: every edge type emits a 10/20 start point.
+                    // For LINE edges (72=1) the chain of starts traces the polygon.
+                    // For ARC/ELLIPSE/SPLINE the chord approximation is rough but keeps
+                    // the entity visible — full edge tessellation is deferred.
+                    hatchPendingX = CGFloat(Double(value) ?? 0)
                 }
             case 20:
                 if hatchInSeed { break }
@@ -370,6 +384,9 @@ private struct ParserState {
                     hatchCurrent.append(CGPoint(x: x, y: CGFloat(Double(value) ?? 0)))
                     hatchPendingX = nil
                     hatchVertsLeft -= 1
+                } else if hatchInBoundary && !hatchPathIsPolyline, let x = hatchPendingX {
+                    hatchCurrent.append(CGPoint(x: x, y: CGFloat(Double(value) ?? 0)))
+                    hatchPendingX = nil
                 }
             case 53:
                 flushHatchPendingLine()
