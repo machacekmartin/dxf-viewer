@@ -1,24 +1,805 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <title>DXF Viewer</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 32rem; margin: 4rem auto; padding: 0 1rem; color: #1c1c1e; line-height: 1.5; }
-    a { color: #0a84ff; }
-    code { background: #f2f2f7; padding: 0.15rem 0.35rem; border-radius: 4px; font-size: 0.9em; }
-  </style>
+<meta charset="utf-8">
+<title>DXF Viewer — Native macOS reader for AutoCAD drawings</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="description" content="DXF Viewer is a fast, native macOS app for opening AutoCAD DXF drawings. Get it on Gumroad — pay what feels right. Free on GitHub.">
+<meta name="theme-color" content="#0d0f13">
+<link rel="icon" type="image/png" href="icon.png">
+<link rel="apple-touch-icon" href="icon.png">
+<meta property="og:title" content="DXF Viewer for macOS">
+<meta property="og:description" content="A native macOS reader for AutoCAD DXF drawings.">
+<meta property="og:image" content="icon.png">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+
+<style>
+:root{
+  --ink-0: #0d0f13;
+  --ink-1: #131620;
+  --ink-2: #1a1f2a;
+  --ink-3: #232938;
+  --line: rgba(255,255,255,.08);
+  --line-2: rgba(255,255,255,.14);
+  --paper: #f4f7ff;
+  --silver-2: #d2d8e2;
+  --silver-1: #9aa3b3;
+  --silver-0: #6b7384;
+  --accent: #9bb6d6;
+
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
+          system-ui, "Helvetica Neue", Inter, sans-serif;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+
+  --pad-x: clamp(20px, 5vw, 64px);
+  --max: 1180px;
+
+  color-scheme: dark;
+}
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth;scroll-padding-top:90px}
+@media (prefers-reduced-motion: reduce){html{scroll-behavior:auto}}
+html,body{background:var(--ink-0);color:var(--silver-2)}
+body{
+  font-family:var(--font);
+  font-weight:400;
+  line-height:1.55;
+  letter-spacing:-0.005em;
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+  overflow-x:hidden;
+}
+img{display:block;max-width:100%}
+a{color:inherit;text-decoration:none}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+code{font-family:var(--mono);font-size:.88em;background:rgba(255,255,255,.06);padding:1px 6px;border-radius:5px;color:var(--paper)}
+
+/* ---------- hero shell ---------- */
+.hero{
+  position:relative;
+  height:100vh;height:100svh;
+  min-height:640px;
+  width:100%;
+  overflow:hidden;
+  isolation:isolate;
+}
+#shader{
+  position:absolute;inset:0;width:100%;height:100%;
+  display:block;z-index:0;
+}
+.hero::after{
+  content:"";position:absolute;inset:0;z-index:1;pointer-events:none;
+  background:linear-gradient(180deg, transparent 60%, var(--ink-0) 100%);
+}
+
+/* ---------- showcase ---------- */
+.showcase{
+  position:relative;
+  margin-top:clamp(-120px, -10vw, -80px);
+  z-index:3;
+}
+.showcase-frame{
+  position:relative;
+  border-radius:18px;
+  overflow:hidden;
+  background:#0a0c10;
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,.08),
+    0 36px 90px rgba(0,0,0,.6),
+    0 12px 36px rgba(0,0,0,.42);
+  transform:perspective(2000px) rotateX(0deg);
+  transition:transform .6s cubic-bezier(.2,.7,.2,1);
+}
+.showcase-frame::after{
+  content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.06);
+}
+.showcase-frame img{width:100%;height:auto;display:block}
+.showcase-caption{
+  margin-top:24px;text-align:center;
+  font-family:var(--mono);font-size:11.5px;letter-spacing:.18em;text-transform:uppercase;
+  color:rgba(255,255,255,.4);
+}
+
+/* nav */
+.nav{
+  position:absolute;top:18px;left:20px;right:20px;z-index:5;
+  display:flex;justify-content:center;
+}
+.nav-inner{
+  display:flex;align-items:center;gap:20px;
+  height:46px;padding:0 18px;
+  border:1px solid rgba(255,255,255,.10);
+  border-radius:12px;
+  background:rgba(15,20,30,.4);
+  backdrop-filter:blur(18px) saturate(140%);
+  -webkit-backdrop-filter:blur(18px) saturate(140%);
+  font-size:13.5px;font-weight:500;letter-spacing:-0.005em;
+  color:rgba(229,235,245,.82);
+}
+.nav-inner .brand{display:flex;align-items:center;gap:10px;color:var(--paper)}
+.nav-inner .brand img{width:22px;height:22px;border-radius:5px}
+.nav-inner a{transition:color .2s}
+.nav-inner a:hover{color:var(--paper)}
+.nav-sep{width:1px;height:18px;background:rgba(255,255,255,.12)}
+@media (max-width:520px){.nav-inner .links a:nth-child(3){display:none}}
+
+/* hero content */
+.hero-content{
+  position:absolute;inset:0;z-index:2;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  text-align:center;padding:0 24px;
+}
+.text-cluster{
+  position:relative;display:flex;flex-direction:column;align-items:center;
+  isolation:isolate;
+}
+.text-cluster::before{
+  content:"";position:absolute;top:50%;left:50%;
+  width:min(92vw,760px);
+  height:clamp(240px,42vh,400px);
+  transform:translate(-50%,-50%);
+  pointer-events:none;z-index:-1;
+  background:radial-gradient(ellipse at center,
+    rgba(7,12,22,.62) 0%,
+    rgba(9,14,24,.42) 38%,
+    rgba(11,16,28,.20) 62%,
+    rgba(12,18,30,.06) 78%,
+    transparent 100%);
+  filter:blur(18px) saturate(112%);
+}
+
+.glyph-stage{
+  perspective:240px;
+  margin-bottom:26px;
+}
+.glyph{
+  width:96px;height:96px;border-radius:22%;
+  display:block;
+  filter:drop-shadow(0 6px 24px rgba(0,0,0,.5));
+  transition:transform .55s cubic-bezier(.2,.7,.2,1), filter .35s ease;
+  transform-style:preserve-3d;
+  cursor:default;
+  will-change:transform;
+}
+
+.badge{
+  display:inline-block;margin-bottom:22px;
+  padding:5px 13px;border-radius:999px;
+  font-family:var(--mono);font-size:11px;font-weight:500;
+  letter-spacing:.16em;text-transform:uppercase;
+  color:rgba(235,241,250,.86);
+  border:1px solid rgba(255,255,255,.14);
+  background:rgba(15,20,30,.45);
+  backdrop-filter:blur(12px);
+  -webkit-backdrop-filter:blur(12px);
+}
+.badge .dot{
+  display:inline-block;width:6px;height:6px;border-radius:50%;
+  background:#7cffa6;vertical-align:1px;margin-right:8px;
+  box-shadow:0 0 8px rgba(124,255,166,.7);
+}
+
+h1{
+  font-size:clamp(2.6rem,7vw,5rem);
+  font-weight:700;
+  letter-spacing:-0.035em;
+  line-height:.98;
+  color:var(--paper);
+  text-shadow:0 2px 18px rgba(4,8,18,.55);
+}
+.lead{
+  margin-top:22px;
+  font-size:clamp(1rem,1.6vw,1.2rem);
+  line-height:1.5;
+  max-width:36ch;
+  color:rgba(229,235,245,.82);
+  text-shadow:0 1px 10px rgba(4,8,18,.5);
+}
+.lead em{font-style:normal;color:var(--paper)}
+
+.ctas{
+  margin-top:32px;
+  display:flex;flex-wrap:wrap;gap:12px;justify-content:center;
+}
+.btn{
+  display:inline-flex;align-items:center;gap:9px;
+  height:48px;padding:0 24px;
+  border-radius:12px;
+  font-size:15px;font-weight:500;letter-spacing:-0.005em;
+  transition:transform .25s ease, background .25s, color .25s, box-shadow .25s, border-color .25s;
+  will-change:transform;
+}
+.btn:hover{transform:translateY(-1px)}
+.btn-primary{
+  color:var(--ink-0);background:var(--paper);
+  box-shadow:0 4px 18px rgba(0,0,0,.35), 0 2px 6px rgba(0,0,0,.25);
+}
+.btn-primary:hover{box-shadow:0 10px 28px rgba(0,0,0,.5), 0 3px 10px rgba(0,0,0,.3)}
+.btn-ghost{
+  color:var(--silver-2);
+  background:rgba(15,20,30,.45);
+  border:1px solid rgba(255,255,255,.14);
+  backdrop-filter:blur(12px);
+  -webkit-backdrop-filter:blur(12px);
+}
+.btn-ghost:hover{background:rgba(25,32,46,.6);color:var(--paper);border-color:rgba(255,255,255,.22)}
+.btn-ghost .pill{
+  display:inline-block;width:6px;height:6px;border-radius:50%;
+  background:var(--silver-1);opacity:.7;
+}
+
+.meta{
+  margin-top:24px;
+  font-family:var(--mono);font-size:11.5px;letter-spacing:.13em;text-transform:uppercase;
+  color:rgba(229,235,245,.5);
+  display:flex;gap:14px;flex-wrap:wrap;justify-content:center;
+}
+.meta span{display:inline-flex;align-items:center;gap:14px}
+.meta span + span::before{
+  content:"";width:3px;height:3px;border-radius:50%;
+  background:rgba(229,235,245,.4);
+}
+
+.scroll-cue{
+  position:absolute;bottom:28px;left:50%;transform:translateX(-50%);
+  z-index:3;color:rgba(255,255,255,.45);
+  pointer-events:none;
+  animation:chev 1.8s ease-in-out infinite;
+}
+@keyframes chev{
+  0%,100%{transform:translate(-50%,0);opacity:.85}
+  50%    {transform:translate(-50%,6px);opacity:.45}
+}
+
+/* ---------- shell ---------- */
+.shell{max-width:var(--max);margin-inline:auto;padding-inline:var(--pad-x)}
+section.block{padding:clamp(80px,12vw,140px) 0}
+
+.eyebrow{
+  font-family:var(--mono);
+  font-size:11px;letter-spacing:.22em;text-transform:uppercase;
+  color:var(--accent);
+  margin-bottom:18px;
+}
+h2{
+  font-weight:600;
+  font-size:clamp(2rem,4.2vw,3.4rem);
+  letter-spacing:-0.03em;
+  line-height:1.04;
+  color:var(--paper);
+  max-width:18ch;
+}
+h2 .dim{color:rgba(244,247,255,.32)}
+
+/* ---------- stats strip ---------- */
+.stats{
+  margin-top:clamp(48px,6vw,72px);
+  display:grid;
+  grid-template-columns:repeat(2,1fr);
+  gap:12px;
+}
+@media (min-width:720px){.stats{grid-template-columns:repeat(4,1fr);gap:18px}}
+.stat{
+  text-align:center;
+  padding:28px 18px;
+  border-radius:16px;
+  background:rgba(255,255,255,.03);
+  border:1px solid var(--line);
+}
+.stat .num{
+  font-size:clamp(1.6rem,2.6vw,2rem);
+  font-weight:600;letter-spacing:-0.02em;line-height:1;
+  color:var(--accent);
+}
+.stat .lbl{
+  margin-top:14px;
+  font-family:var(--mono);font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;
+  color:rgba(255,255,255,.4);
+}
+
+/* ---------- features ---------- */
+.features-head{display:flex;flex-direction:column;align-items:flex-start;gap:8px}
+.features-grid{
+  margin-top:clamp(40px,6vw,72px);
+  display:grid;
+  grid-template-columns:repeat(auto-fit, minmax(280px,1fr));
+  gap:clamp(14px,1.8vw,22px);
+}
+.feature{
+  position:relative;
+  padding:30px 26px 26px;
+  border-radius:18px;
+  background:rgba(255,255,255,.025);
+  border:1px solid var(--line);
+  overflow:hidden;
+  transition:transform .45s cubic-bezier(.2,.7,.2,1), border-color .25s, background .25s;
+}
+.feature:hover{
+  transform:translateY(-3px);
+  border-color:var(--line-2);
+  background:rgba(255,255,255,.04);
+}
+.feature::before{
+  content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:linear-gradient(180deg, rgba(255,255,255,.04), transparent 35%);
+}
+.feature .num{
+  font-family:var(--mono);font-size:11px;color:rgba(255,255,255,.4);
+  letter-spacing:.18em;margin-bottom:16px;
+}
+.feature h3{
+  font-weight:600;font-size:18px;letter-spacing:-0.012em;line-height:1.25;
+  color:var(--paper);margin-bottom:10px;
+}
+.feature p{font-size:14.5px;line-height:1.55;color:rgba(229,235,245,.7)}
+
+/* ---------- download ---------- */
+.download{text-align:center}
+.download .glyph-stage{width:80px;margin:0 auto 26px}
+.download .glyph{width:80px;height:80px;animation:float 7s ease-in-out infinite}
+.download h2{margin-inline:auto;text-align:center}
+.download p{
+  font-size:17px;color:rgba(229,235,245,.72);
+  max-width:46ch;margin:18px auto 32px;line-height:1.55;
+}
+.download .ctas{justify-content:center}
+@keyframes float{
+  0%,100%{transform:translateY(0)}
+  50%    {transform:translateY(-8px)}
+}
+
+/* ---------- footer ---------- */
+footer{
+  padding:42px 0 52px;
+  border-top:1px solid var(--line);
+  display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;
+  font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;
+  color:rgba(255,255,255,.45);
+}
+footer .links{display:flex;gap:22px}
+footer a{transition:color .2s}
+footer a:hover{color:var(--paper)}
+footer .copy{display:flex;gap:12px;align-items:center;text-transform:uppercase}
+
+/* ---------- reveal ---------- */
+[data-reveal]{
+  opacity:0;
+  transform:translateY(22px);
+  transition:opacity .8s cubic-bezier(.2,.7,.2,1), transform .8s cubic-bezier(.2,.7,.2,1);
+  transition-delay:var(--d,0ms);
+}
+[data-reveal].in{opacity:1;transform:none}
+
+/* hero items get a one-shot fade-up on load */
+.hero [data-enter]{
+  opacity:0;animation:enter .9s cubic-bezier(.2,.7,.2,1) forwards;
+  animation-delay:var(--d,0ms);
+}
+@keyframes enter{
+  from{opacity:0;transform:translateY(14px)}
+  to  {opacity:1;transform:none}
+}
+
+@media (prefers-reduced-motion: reduce){
+  .scroll-cue,.download .glyph{animation:none !important}
+  .hero [data-enter]{animation:none;opacity:1}
+  [data-reveal]{opacity:1;transform:none;transition:none}
+}
+</style>
 </head>
 <body>
-  <h1>DXF Viewer</h1>
-  <p>A fast, native macOS viewer for AutoCAD DXF drawings, by
-     <a href="mailto:machacekmartin@icloud.com">Martin Machacek</a>.</p>
-  <p><strong>Download:</strong>
-     <a href="https://machacekmartin.gumroad.com/l/dxf-viewer-macos">Gumroad</a> ·
-     <a href="https://github.com/machacekmartin/dxf-viewer/releases">GitHub Releases</a></p>
-  <p>The Sparkle update feed lives at
-     <a href="appcast.xml"><code>appcast.xml</code></a>.</p>
-  <p><a href="https://github.com/machacekmartin/dxf-viewer">Source on GitHub</a></p>
+
+<!-- ============ HERO ============ -->
+<header class="hero">
+  <canvas id="shader" aria-hidden="true"></canvas>
+
+  <nav class="nav">
+    <div class="nav-inner">
+      <a class="brand" href="#"><img src="icon.png" alt=""> DXF Viewer</a>
+      <span class="nav-sep" aria-hidden="true"></span>
+      <span class="links" style="display:flex;gap:18px">
+        <a href="#features">Features</a>
+        <a href="#download">Download</a>
+        <a href="https://github.com/machacekmartin/dxf-viewer">GitHub</a>
+      </span>
+    </div>
+  </nav>
+
+  <div class="hero-content">
+    <div class="text-cluster">
+      <div class="glyph-stage" id="glyphStage" data-enter>
+        <img class="glyph" id="glyph" src="icon.png" alt="DXF Viewer app icon">
+      </div>
+
+      <span class="badge" data-enter style="--d:80ms">
+        <span class="dot"></span>v1.0.2 · Out now
+      </span>
+
+      <h1 data-enter style="--d:160ms">DXF, opened.</h1>
+
+      <p class="lead" data-enter style="--d:240ms">
+        A native macOS reader for AutoCAD drawings. <em>Fast, free, and quiet.</em>
+      </p>
+
+      <div class="ctas" data-enter style="--d:320ms">
+        <a class="btn btn-primary" href="https://machacekmartin.gumroad.com/l/dxf-viewer-macos">
+          Get it on Gumroad
+        </a>
+        <a class="btn btn-ghost" href="https://github.com/machacekmartin/dxf-viewer/releases/latest">
+          <span class="pill"></span> Or free on GitHub
+        </a>
+      </div>
+
+      <div class="meta" data-enter style="--d:420ms">
+        <span>macOS 26+</span><span>Universal</span><span>2.6 MB</span><span>Auto-updates</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="scroll-cue" aria-hidden="true">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="6 9 12 15 18 9"/>
+    </svg>
+  </div>
+</header>
+
+
+<!-- ============ SHOWCASE ============ -->
+<section class="showcase">
+  <div class="shell">
+    <div class="showcase-frame" data-reveal>
+      <img src="preview.png"
+           alt="DXF Viewer showing floorplan.dxf — 17 layers in the sidebar including A-DIMS, A-NOTE, A-TEXT, and xref-Bishop layers; 12 selected; scale 1:4.75."
+           width="3420" height="2146" loading="lazy" decoding="async">
+    </div>
+    <p class="showcase-caption" data-reveal style="--d:120ms">floorplan.dxf · 17 layers · 1:4.75</p>
+  </div>
+</section>
+
+
+<!-- ============ STATS ============ -->
+<section class="block">
+  <div class="shell">
+    <div data-reveal style="text-align:center;max-width:48ch;margin:0 auto">
+      <div class="eyebrow">Built for engineers</div>
+      <h2 style="margin:0 auto">Reads what AutoCAD writes. <span class="dim">Nothing more, nothing less.</span></h2>
+    </div>
+
+    <div class="stats">
+      <div class="stat" data-reveal>
+        <div class="num">11</div>
+        <div class="lbl">DXF entities</div>
+      </div>
+      <div class="stat" data-reveal style="--d:80ms">
+        <div class="num">2.6 MB</div>
+        <div class="lbl">App size</div>
+      </div>
+      <div class="stat" data-reveal style="--d:160ms">
+        <div class="num">&lt; 50 ms</div>
+        <div class="lbl">Cold launch</div>
+      </div>
+      <div class="stat" data-reveal style="--d:240ms">
+        <div class="num">0</div>
+        <div class="lbl">Telemetry</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ============ FEATURES ============ -->
+<section class="block" id="features">
+  <div class="shell">
+    <div class="features-head" data-reveal>
+      <div class="eyebrow">Features</div>
+      <h2>The Mac things, <span class="dim">done right.</span></h2>
+    </div>
+
+    <div class="features-grid">
+      <article class="feature" data-reveal style="--d:60ms">
+        <div class="num">01</div>
+        <h3>Eleven DXF entities, decoded</h3>
+        <p>LINE, CIRCLE, ARC, POLYLINE, TEXT, ELLIPSE, SPLINE, HATCH, DIMENSION, LEADER, INSERT. Hatches keep their patterns; polygons keep their holes.</p>
+      </article>
+
+      <article class="feature" data-reveal style="--d:140ms">
+        <div class="num">02</div>
+        <h3>Layers in their place</h3>
+        <p>Toggle visibility, recolor, search by name. Drawings keep the layer order the draftsman intended.</p>
+      </article>
+
+      <article class="feature" data-reveal style="--d:220ms">
+        <div class="num">03</div>
+        <h3>Scale that means something</h3>
+        <p>A live scale bar in millimetres, centimetres, or metres. Zoom with pinch or <code>⌘</code>-scroll. Press <code>F</code> to fit.</p>
+      </article>
+
+      <article class="feature" data-reveal style="--d:300ms">
+        <div class="num">04</div>
+        <h3>Async, on a background thread</h3>
+        <p>Parse a 30-MB drawing without freezing the window. Progress is reported live; the UI stays responsive.</p>
+      </article>
+
+      <article class="feature" data-reveal style="--d:380ms">
+        <div class="num">05</div>
+        <h3>Native, end to end</h3>
+        <p>SwiftUI and Liquid Glass on macOS 26. Finder double-click, drag-onto-Dock, Open Recent, VoiceOver. Just a Mac app.</p>
+      </article>
+
+      <article class="feature" data-reveal style="--d:460ms">
+        <div class="num">06</div>
+        <h3>Quiet auto-updates</h3>
+        <p>Sparkle checks for new versions in the background. EdDSA-signed, no telemetry, no account.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+
+<!-- ============ DOWNLOAD ============ -->
+<section class="block download" id="download">
+  <div class="shell">
+    <div class="glyph-stage" data-reveal>
+      <img class="glyph" src="icon.png" alt="">
+    </div>
+    <h2 data-reveal style="--d:80ms;margin-inline:auto">Open a drawing. <span class="dim">See what's there.</span></h2>
+    <p data-reveal style="--d:180ms">
+      Grab it on Gumroad and pay whatever feels right — even nothing.
+      If you'd rather skip the checkout, the same build is free on GitHub.
+      Either way, it's the same app.
+    </p>
+    <div class="ctas" data-reveal style="--d:280ms">
+      <a class="btn btn-primary" href="https://machacekmartin.gumroad.com/l/dxf-viewer-macos">
+        Get it on Gumroad
+      </a>
+      <a class="btn btn-ghost" href="https://github.com/machacekmartin/dxf-viewer/releases/latest">
+        <span class="pill"></span> Download v1.0.2 free on GitHub
+      </a>
+    </div>
+  </div>
+</section>
+
+
+<!-- ============ FOOTER ============ -->
+<footer class="shell">
+  <div class="copy"><a href="https://github.com/machacekmartin" target="_blank" rel="noopener">© 2026 Martin Machacek</a></div>
+  <div class="links">
+    <a href="https://github.com/machacekmartin/dxf-viewer">Source</a>
+    <a href="https://github.com/machacekmartin/dxf-viewer/blob/main/CHANGELOG.md">Changelog</a>
+  </div>
+</footer>
+
+
+<script>
+// ---------- LiquidChrome WebGL shader ----------
+// Fragment shader is the ReactBits "Liquid Chrome" — 10-iteration cosine
+// distort with per-channel chromatic offset, divided by abs(sin(...)) to
+// create the chrome-streak singularities. Same math as super.engineering.
+(() => {
+  const canvas = document.getElementById('shader');
+  const gl = canvas.getContext('webgl', { antialias: false, alpha: false, premultipliedAlpha: false });
+  if (!gl) {
+    // Fallback: subtle gradient if WebGL is unavailable
+    canvas.style.background =
+      'radial-gradient(80% 60% at 30% 20%, #2a3140 0%, transparent 60%),'+
+      'radial-gradient(80% 60% at 70% 80%, #1c2230 0%, transparent 60%),'+
+      '#0d0f13';
+    return;
+  }
+
+  const vert = `
+    attribute vec2 aPos;
+    varying vec2 vUv;
+    void main(){
+      vUv = aPos * 0.5 + 0.5;
+      gl_Position = vec4(aPos, 0., 1.);
+    }
+  `;
+
+  const frag = `
+    precision highp float;
+    uniform float uTime;
+    uniform vec3  uResolution;
+    uniform vec3  uInk;        // near-black base
+    uniform vec3  uCyan;       // cool ribbon midtone
+    uniform vec3  uMagenta;    // warm ribbon midtone
+    uniform vec3  uHilight;    // chrome specular peak
+    uniform float uAmplitude;
+    uniform float uFrequencyX;
+    uniform float uFrequencyY;
+    varying vec2 vUv;
+
+    // 2D rotation matrix
+    mat2 rot(float a) {
+      float s = sin(a), c = cos(a);
+      return mat2(c, -s, s, c);
+    }
+
+    // Iterative domain warp. Each iteration drifts on its OWN time phase
+    // so the warp field flows continuously instead of pulsing in place.
+    // Amplitude breathes very slowly → the "magical shift".
+    vec2 flow(vec2 p) {
+      float breathe = 1.0 + 0.25 * sin(uTime * 0.18);
+      float amp = uAmplitude * breathe;
+      for (float i = 0.0; i < 6.0; i++) {
+        float k = i + 1.0;
+        float t = uTime * (0.32 + i * 0.06);
+        p.x += amp / k * cos(k * uFrequencyX * p.y + t + i * 1.7);
+        p.y += amp / k * cos(k * uFrequencyY * p.x + t + i * 2.3);
+      }
+      return p;
+    }
+
+    void main() {
+      vec2 fragCoord = vUv * uResolution.xy;
+      vec2 uv = (2.0 * fragCoord - uResolution.xy) / min(uResolution.x, uResolution.y);
+
+      // Slow rotation of the whole field — the "magical shift": composition
+      // rearranges over ~40 s without ever obviously rotating.
+      uv *= rot(sin(uTime * 0.07) * 0.45);
+
+      // Steady directional drift that itself rotates → current changes heading.
+      float driftAngle = uTime * 0.10;
+      vec2  drift = vec2(cos(driftAngle), sin(driftAngle)) * uTime * 0.12;
+      vec2 p = flow(uv * 1.25 + drift);
+
+      // Ridge function: 1 - |sin(field)| → continuous shiny crests.
+      float field  = p.x * 0.9 + p.y * 1.1;
+      float field2 = p.x * 1.3 - p.y * 0.7;
+      float ridge  = 1.0 - abs(sin(field  + uTime * 0.45));
+      float ridge2 = 1.0 - abs(sin(field2 - uTime * 0.38));
+      float ribbon = mix(ridge, ridge2, 0.5);
+      ribbon = pow(ribbon, 1.4);
+
+      // Sharp specular flash on crest peaks → glassy chrome highlights
+      float spec = pow(ribbon, 7.0);
+
+      // Iridescent hue split. The mix center wanders → the cyan and magenta
+      // regions swap dominance slowly, another layer of "magical" shift.
+      float hueWander = sin(uTime * 0.13) * 0.4;
+      float hueAxis   = sin(p.x * 0.55 - p.y * 0.45 + uTime * 0.22);
+      float hueMix    = smoothstep(-0.45 + hueWander, 0.55 + hueWander, hueAxis);
+      vec3 hue = mix(uCyan, uMagenta, hueMix);
+
+      vec3 col = mix(uInk, hue, ribbon);
+      col += uHilight * spec * 0.75;
+
+      // Vignette
+      float r = length(vUv - 0.5);
+      col *= 1.0 - smoothstep(0.70, 1.20, r) * 0.32;
+
+      gl_FragColor = vec4(col, 1.0);
+    }
+  `;
+
+  function compile(type, src){
+    const sh = gl.createShader(type);
+    gl.shaderSource(sh, src);
+    gl.compileShader(sh);
+    if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)){
+      console.error(gl.getShaderInfoLog(sh)); return null;
+    }
+    return sh;
+  }
+  const prog = gl.createProgram();
+  gl.attachShader(prog, compile(gl.VERTEX_SHADER, vert));
+  gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, frag));
+  gl.linkProgram(prog);
+  gl.useProgram(prog);
+
+  // Fullscreen triangle (covers viewport)
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+  const aPos = gl.getAttribLocation(prog, 'aPos');
+  gl.enableVertexAttribArray(aPos);
+  gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+  const uTime    = gl.getUniformLocation(prog, 'uTime');
+  const uRes     = gl.getUniformLocation(prog, 'uResolution');
+  const uInk     = gl.getUniformLocation(prog, 'uInk');
+  const uCyan    = gl.getUniformLocation(prog, 'uCyan');
+  const uMagenta = gl.getUniformLocation(prog, 'uMagenta');
+  const uHilight = gl.getUniformLocation(prog, 'uHilight');
+  const uAmp     = gl.getUniformLocation(prog, 'uAmplitude');
+  const uFx      = gl.getUniformLocation(prog, 'uFrequencyX');
+  const uFy      = gl.getUniformLocation(prog, 'uFrequencyY');
+
+  // Iridescent chrome palette: deep ink lows, cyan ↔ magenta midtones,
+  // bright chrome highlights on crests.
+  gl.uniform3f(uInk,     0.030, 0.045, 0.110);  // ≈ #08 0b 1c
+  gl.uniform3f(uCyan,    0.160, 0.620, 0.950);  // ≈ #29 9e f2
+  gl.uniform3f(uMagenta, 0.700, 0.220, 0.950);  // ≈ #b3 38 f2
+  gl.uniform3f(uHilight, 0.880, 0.940, 1.020);  // ≈ #e0 f0 ff chrome
+  gl.uniform1f(uAmp, 0.55);   // wider warps → twisted ribbons
+  gl.uniform1f(uFx, 2.1);
+  gl.uniform1f(uFy, 1.7);
+
+  const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+  function resize(){
+    const w = Math.max(1, canvas.clientWidth  * dpr | 0);
+    const h = Math.max(1, canvas.clientHeight * dpr | 0);
+    if (canvas.width !== w || canvas.height !== h){
+      canvas.width = w; canvas.height = h;
+      gl.viewport(0, 0, w, h);
+      gl.uniform3f(uRes, w, h, w / h);
+    }
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const speed = 0.22; // fast enough to feel alive, slow enough to read flow
+  let running = true;
+  let raf = 0;
+
+  function frame(t){
+    if (!running) return;
+    gl.uniform1f(uTime, (t || 0) * 0.001 * speed);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    raf = requestAnimationFrame(frame);
+  }
+  raf = requestAnimationFrame(frame);
+
+  if (reduced){
+    // render one static frame, then stop
+    cancelAnimationFrame(raf);
+    gl.uniform1f(uTime, 1.0);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    running = false;
+  }
+
+  // Pause shader when hero scrolls off-screen
+  const heroEl = document.querySelector('.hero');
+  if (heroEl && 'IntersectionObserver' in window && !reduced){
+    new IntersectionObserver((entries) => {
+      const visible = entries[0].isIntersecting;
+      if (visible && !running){
+        running = true;
+        raf = requestAnimationFrame(frame);
+      } else if (!visible && running){
+        running = false;
+        cancelAnimationFrame(raf);
+      }
+    }, { threshold: 0 }).observe(heroEl);
+  }
+
+  // 3D tilt on the icon (super.engineering style)
+  const stage = document.getElementById('glyphStage');
+  const glyph = document.getElementById('glyph');
+  const fine = matchMedia('(pointer: fine)').matches;
+  if (stage && glyph && fine && !reduced){
+    stage.addEventListener('mousemove', (e) => {
+      const r = stage.getBoundingClientRect();
+      const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      const mx = (e.clientX - cx) / (window.innerWidth / 2);
+      const my = (e.clientY - cy) / (window.innerHeight / 2);
+      glyph.style.transform = `rotateY(${mx * 25}deg) rotateX(${-my * 25}deg) translateY(-4px) scale(1.03)`;
+      glyph.style.filter = 'drop-shadow(0 10px 30px rgba(0,0,0,.6))';
+    });
+    stage.addEventListener('mouseleave', () => {
+      glyph.style.transform = '';
+      glyph.style.filter = 'drop-shadow(0 6px 24px rgba(0,0,0,.5))';
+    });
+  }
+})();
+
+// ---------- Reveal on scroll ----------
+(() => {
+  const io = new IntersectionObserver((entries) => {
+    for (const e of entries){
+      if (e.isIntersecting){
+        e.target.classList.add('in');
+        io.unobserve(e.target);
+      }
+    }
+  }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
+  document.querySelectorAll('[data-reveal]').forEach(el => io.observe(el));
+})();
+</script>
+
 </body>
 </html>
