@@ -6,7 +6,8 @@
 #   dist/DXFViewer-<version>.zip   same .app, easier for Sparkle
 #
 # Buyers will see Gatekeeper's "can't be opened" dialog on first launch.
-# Workaround: right-click .app → Open the first time.
+# Workaround: System Settings → Privacy & Security → "Open Anyway".
+# (macOS 15+ removed the older right-click-Open bypass for ad-hoc bundles.)
 #
 # Optional env: VERSION  (default: read from Info.plist)
 #               DIST_DIR (default: dist)
@@ -20,8 +21,10 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 DIST_DIR="${DIST_DIR:-dist}"
-APP_BUNDLE="$DIST_DIR/DXFViewer.app"
+APP_BUNDLE="$DIST_DIR/DXF Viewer.app"
 VERSION="${VERSION:-$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$ROOT/Resources/Info.plist")}"
+# DMG/ZIP keep concatenated filenames — they live in URLs and download
+# dialogs where %20-encoded spaces are uglier than the missing space.
 DMG_PATH="$DIST_DIR/DXFViewer-$VERSION.dmg"
 ZIP_PATH="$DIST_DIR/DXFViewer-$VERSION.zip"
 
@@ -61,7 +64,7 @@ if [[ -n "${SIGN_ID:-}" && -n "${NOTARY_KEYCHAIN_PROFILE:-}" ]]; then
     say "Notarized."
 else
     say "No SIGN_ID / NOTARY_KEYCHAIN_PROFILE → shipping ad-hoc."
-    say "Buyers will need to right-click → Open on first launch."
+    say "Buyers will need: System Settings → Privacy & Security → Open Anyway."
 fi
 
 say "Sparkle EdDSA sign step (run manually AFTER the GitHub release is live):"

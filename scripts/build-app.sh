@@ -3,11 +3,13 @@
 # Produces a universal (arm64 + x86_64) .app under dist/.
 #
 # Env vars:
-#   CONFIG       (default: release)    swift build configuration
-#   DIST_DIR     (default: dist)       output directory
-#   APP_NAME     (default: DXFViewer)  executable + bundle name
-#   SIGN_ID      (optional)            codesign identity, e.g.
-#                                      "Developer ID Application: Martin Machacek (TEAMID)"
+#   CONFIG       (default: release)        swift build configuration
+#   DIST_DIR     (default: dist)           output directory
+#   APP_NAME     (default: "DXF Viewer")   user-visible bundle + executable name
+#   SWIFT_TARGET (default: DXFViewer)      SwiftPM target — the binary
+#                                          `swift build` produces in .build/
+#   SIGN_ID      (optional)                codesign identity, e.g.
+#                                          "Developer ID Application: Martin Machacek (TEAMID)"
 #
 # Exit codes: 0 success, non-zero on any failed step.
 
@@ -18,7 +20,8 @@ cd "$ROOT"
 
 CONFIG="${CONFIG:-release}"
 DIST_DIR="${DIST_DIR:-dist}"
-APP_NAME="${APP_NAME:-DXFViewer}"
+APP_NAME="${APP_NAME:-DXF Viewer}"
+SWIFT_TARGET="${SWIFT_TARGET:-DXFViewer}"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
 ENTITLEMENTS="$ROOT/Resources/DXFViewer.entitlements"
 
@@ -36,12 +39,12 @@ bash "$ROOT/tools/make-icon.sh" >/dev/null
 say "Building release (arm64)"
 swift build -c "$CONFIG" --arch arm64
 
-BIN_PATH="$ROOT/.build/arm64-apple-macosx/$CONFIG/$APP_NAME"
+BIN_PATH="$ROOT/.build/arm64-apple-macosx/$CONFIG/$SWIFT_TARGET"
 if [[ ! -x "$BIN_PATH" ]]; then
-    BIN_PATH="$ROOT/.build/$CONFIG/$APP_NAME"
+    BIN_PATH="$ROOT/.build/$CONFIG/$SWIFT_TARGET"
 fi
 if [[ ! -x "$BIN_PATH" ]]; then
-    echo "Could not locate built binary; checked .build/arm64-apple-macosx and .build/$CONFIG" >&2
+    echo "Could not locate built binary; checked .build/arm64-apple-macosx and .build/$CONFIG for $SWIFT_TARGET" >&2
     exit 1
 fi
 

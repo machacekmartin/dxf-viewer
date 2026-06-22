@@ -6,6 +6,26 @@ All notable changes to DXF Viewer are documented here. Format follows
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-06-23
+
+### Changed
+- App bundle renamed from `DXFViewer.app` to `DXF Viewer.app`. The
+  Dock icon, menu bar, About dialog, and Finder all already showed
+  "DXF Viewer" (via `CFBundleDisplayName`); this release brings the
+  on-disk bundle name, the `CFBundleExecutable`, and Activity Monitor's
+  process name into line.
+- Sparkle handles the upgrade automatically — the new bundle replaces
+  the old one at its original install location. **If you pinned the
+  app to the Dock you'll need to re-pin it after the update**; the
+  Dock shortcut points at the old filename.
+- Source layout, SwiftPM target name, sandbox container ID
+  (`com.machacekmartin.dxfviewer`), and DMG/ZIP asset filenames are
+  intentionally unchanged.
+
+### Licence
+- Project relicensed from MIT to GPL-3.0-or-later. Forks are still
+  welcome; they just have to stay open-source and GPL too.
+
 ## [1.0.2] - 2026-06-22
 
 ### Changed
