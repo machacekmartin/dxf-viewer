@@ -59,8 +59,11 @@ func entityDescription(_ e: DXFEntity) -> String {
         return "ratio \(fmtCoord(ratio)) at (\(fmtCoord(c.x)), \(fmtCoord(c.y)))"
     case .spline(let cps, let deg, _, let closed):
         return "deg \(deg) · \(cps.count) ctrl pts\(closed ? " · closed" : "")"
-    case .hatch(let pts):
-        return "\(pts.count) boundary pts"
+    case .hatch(let h):
+        let n = h.boundaries.reduce(0) { $0 + $1.verts.count }
+        let paths = h.boundaries.count
+        let pat = h.isSolid ? "solid" : (h.pattern.isEmpty ? "outline" : "\(h.pattern.count)-line pattern")
+        return "\(n) boundary pts · \(paths) path\(paths == 1 ? "" : "s") · \(pat)"
     case .dimension(let children):
         return "\(children.count) parts"
     case .leader(let pts, _):

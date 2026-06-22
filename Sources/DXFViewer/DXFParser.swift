@@ -180,9 +180,17 @@ private struct ParserState {
     var splineDegree = 3
     var splineFlags = 0
 
-    var hatchVerts: [CGPoint] = []
-    var hatchLastVertex: (x: CGFloat?, y: CGFloat?) = (nil, nil)
-    var hatchInBoundary = false
+    var hatchPaths: [HatchBoundary] = []
+    var hatchCurrent: [CGPoint] = []
+    var hatchPendingX: CGFloat? = nil       // 10 received, awaiting 20
+    var hatchVertsLeft: Int = 0             // remaining 10/20 pairs in current path (set by code 93)
+    var hatchPathIsPolyline = false
+    var hatchInSeed = false                 // suppress 10/20 collection after code 98
+    var hatchPattern: [HatchPatternLine] = []
+    var hatchPendingLine: HatchPatternLine? = nil
+    var hatchSolid = false
+    var hatchScale: CGFloat = 1
+    var hatchEntityAngle: CGFloat = 0
 
     func num(_ k: Int, _ d: Double = 0) -> CGFloat { CGFloat(Double(attrs[k] ?? "") ?? d) }
     func intVal(_ k: Int, _ d: Int = 0) -> Int { Int(attrs[k] ?? "") ?? d }
@@ -207,11 +215,20 @@ private struct ParserState {
         }
         lwLastVertex = (nil, nil, 0)
     }
-    mutating func commitHatchVertex() {
-        if let x = hatchLastVertex.x, let y = hatchLastVertex.y {
-            hatchVerts.append(CGPoint(x: x, y: y))
+    mutating func flushHatchPath() {
+        if !hatchCurrent.isEmpty {
+            hatchPaths.append(HatchBoundary(verts: hatchCurrent, closed: true))
         }
-        hatchLastVertex = (nil, nil)
+        hatchCurrent = []
+        hatchPendingX = nil
+        hatchVertsLeft = 0
+        hatchPathIsPolyline = false
+    }
+    mutating func flushHatchPendingLine() {
+        if let pl = hatchPendingLine {
+            hatchPattern.append(pl)
+            hatchPendingLine = nil
+        }
     }
     mutating func reset() {
         current = nil; attrs = [:]
@@ -220,7 +237,10 @@ private struct ParserState {
         lwVerts = []; lwLastVertex = (nil, nil, 0)
         splinePts = []; splineLastX = nil
         splineKnots = []; splineDegree = 3; splineFlags = 0
-        hatchVerts = []; hatchLastVertex = (nil, nil); hatchInBoundary = false
+        hatchPaths = []; hatchCurrent = []; hatchPendingX = nil
+        hatchVertsLeft = 0; hatchPathIsPolyline = false; hatchInSeed = false
+        hatchPattern = []; hatchPendingLine = nil
+        hatchSolid = false; hatchScale = 1; hatchEntityAngle = 0
     }
 
     // Returns true if EOF reached.
@@ -321,12 +341,55 @@ private struct ParserState {
             return false
         }
         if current == "HATCH" {
-            if code == 92 { hatchInBoundary = true; attrs[code] = value }
-            else if hatchInBoundary && code == 10 {
-                commitHatchVertex(); hatchLastVertex.x = CGFloat(Double(value) ?? 0)
-            } else if hatchInBoundary && code == 20 {
-                hatchLastVertex.y = CGFloat(Double(value) ?? 0)
-            } else { attrs[code] = value }
+            switch code {
+            case 70:
+                hatchSolid = (Int(value) ?? 0) != 0
+            case 41:
+                hatchScale = CGFloat(Double(value) ?? 1)
+            case 52:
+                hatchEntityAngle = CGFloat(Double(value) ?? 0)
+            case 92:
+                // New boundary path starts. Flush current path, capture polyline-flag (bit 2 = 2).
+                flushHatchPath()
+                let flags = Int(value) ?? 0
+                hatchPathIsPolyline = (flags & 2) != 0
+            case 93:
+                // Vertex count for current path (polyline) OR edge count (non-polyline; skipped).
+                hatchVertsLeft = hatchPathIsPolyline ? (Int(value) ?? 0) : 0
+            case 10:
+                if hatchInSeed { break }
+                if hatchPathIsPolyline && hatchVertsLeft > 0 {
+                    hatchPendingX = CGFloat(Double(value) ?? 0)
+                } else if hatchPendingLine != nil {
+                    // Codes 10/20 don't appear in the entity-level pattern table for predefined
+                    // patterns, but guard anyway by ignoring outside boundary context.
+                }
+            case 20:
+                if hatchInSeed { break }
+                if hatchPathIsPolyline && hatchVertsLeft > 0, let x = hatchPendingX {
+                    hatchCurrent.append(CGPoint(x: x, y: CGFloat(Double(value) ?? 0)))
+                    hatchPendingX = nil
+                    hatchVertsLeft -= 1
+                }
+            case 53:
+                flushHatchPendingLine()
+                let lineAngle = CGFloat(Double(value) ?? 0)
+                hatchPendingLine = HatchPatternLine(
+                    angleDeg: lineAngle + hatchEntityAngle,
+                    basePoint: .zero, offset: .zero, dashes: [])
+            case 43: if hatchPendingLine != nil { hatchPendingLine!.basePoint.x = CGFloat(Double(value) ?? 0) }
+            case 44: if hatchPendingLine != nil { hatchPendingLine!.basePoint.y = CGFloat(Double(value) ?? 0) }
+            case 45: if hatchPendingLine != nil { hatchPendingLine!.offset.x = CGFloat(Double(value) ?? 0) }
+            case 46: if hatchPendingLine != nil { hatchPendingLine!.offset.y = CGFloat(Double(value) ?? 0) }
+            case 49: if hatchPendingLine != nil { hatchPendingLine!.dashes.append(CGFloat(Double(value) ?? 0)) }
+            case 98:
+                // Seed-point count. Subsequent 10/20 pairs are seed points — must NOT be
+                // collected as boundary vertices (root cause of the 2 stray points in #145).
+                flushHatchPendingLine()
+                hatchInSeed = true
+            default:
+                attrs[code] = value
+            }
             return false
         }
         if current == "SPLINE" {
@@ -461,8 +524,33 @@ private struct ParserState {
                 appendEntity(DXFEntity(kind: .spline(splinePts, max(splineDegree, 1), splineKnots, closed), aci: aci, layer: layer))
             }
         case "HATCH":
-            commitHatchVertex()
-            appendEntity(DXFEntity(kind: .hatch(hatchVerts), aci: aci, layer: layer))
+            flushHatchPath()
+            flushHatchPendingLine()
+            // Apply entity-level scale + rotation to each pattern line's basePoint/offset.
+            // The pattern-line angle already absorbs entity angle; the basePoint/offset still
+            // live in pattern coords and must be rotated and scaled into world space.
+            let cosA = cos(Double(hatchEntityAngle) * .pi / 180)
+            let sinA = sin(Double(hatchEntityAngle) * .pi / 180)
+            let scaled = hatchPattern.map { pl -> HatchPatternLine in
+                func rot(_ p: CGPoint) -> CGPoint {
+                    let x = Double(p.x) * cosA - Double(p.y) * sinA
+                    let y = Double(p.x) * sinA + Double(p.y) * cosA
+                    return CGPoint(x: CGFloat(x) * hatchScale, y: CGFloat(y) * hatchScale)
+                }
+                return HatchPatternLine(
+                    angleDeg: pl.angleDeg,
+                    basePoint: rot(pl.basePoint),
+                    offset: rot(pl.offset),
+                    dashes: pl.dashes.map { $0 * hatchScale })
+            }
+            guard !hatchPaths.isEmpty else { return }
+            let data = HatchData(
+                boundaries: hatchPaths,
+                isSolid: hatchSolid,
+                pattern: scaled,
+                patternScale: hatchScale,
+                patternAngle: hatchEntityAngle)
+            appendEntity(DXFEntity(kind: .hatch(data), aci: aci, layer: layer))
         case "LEADER":
             commitLWVertex()
             guard !lwVerts.isEmpty else { return }
@@ -622,8 +710,27 @@ private func expandInserts(_ entities: [DXFEntity], blocks: [String: (entities: 
                 emit(DXFEntity(kind: .ellipse(cw, CGPoint(x: endpoint.x - cw.x, y: endpoint.y - cw.y), ratio, sa, ea), aci: aci, layer: layer))
             case .spline(let cps, let deg, let knots, let closed):
                 emit(DXFEntity(kind: .spline(cps.map(tx), deg, knots, closed), aci: aci, layer: layer))
-            case .hatch(let pts):
-                emit(DXFEntity(kind: .hatch(pts.map(tx)), aci: aci, layer: layer))
+            case .hatch(let h):
+                var hh = h
+                hh.boundaries = h.boundaries.map {
+                    HatchBoundary(verts: $0.verts.map(tx), closed: $0.closed)
+                }
+                // Pattern base/offset are in world units already; apply INSERT scale + rotation.
+                // tx() maps a world point through translate + scale + rotate; we want just the
+                // linear part (scale + rotate) for vectors. Recover by subtracting tx(.zero).
+                let origin = tx(.zero)
+                func txVec(_ v: CGPoint) -> CGPoint {
+                    let p = tx(v)
+                    return CGPoint(x: p.x - origin.x, y: p.y - origin.y)
+                }
+                hh.pattern = h.pattern.map {
+                    HatchPatternLine(
+                        angleDeg: $0.angleDeg + ins.rotDeg,
+                        basePoint: tx($0.basePoint),
+                        offset: txVec($0.offset),
+                        dashes: $0.dashes.map { $0 * scaleAbs })
+                }
+                emit(DXFEntity(kind: .hatch(hh), aci: aci, layer: layer))
             case .dimension(let children):
                 emit(DXFEntity(kind: .dimension(children), aci: aci, layer: layer))
             case .leader(let pts, let arrow):
@@ -701,7 +808,7 @@ func computeBounds(_ entities: [DXFEntity]) -> CGRect {
             }
         case .spline(let cps, let deg, let knots, _):
             tessellateSpline(controlPoints: cps, knots: knots, degree: deg).forEach(extend)
-        case .hatch(let pts): pts.forEach(extend)
+        case .hatch(let h): h.boundaries.forEach { $0.verts.forEach(extend) }
         case .dimension(let children):
             let sub = computeBounds(children)
             if sub.width > 0 || sub.height > 0 {

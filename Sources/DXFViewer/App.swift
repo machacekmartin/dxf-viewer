@@ -109,7 +109,7 @@ struct DXFViewerApp: App {
                 if dumpMode {
                     for (idx, e) in doc.entities.enumerated() {
                         let (xmn, ymn, xmx, ymx) = entityBBox(e)
-                        print("\(idx)\t\(dxfKindUppercase(e.kind))\tlayer=\(e.layer)\txmin=\(xmn)\tymin=\(ymn)\txmax=\(xmx)\tymax=\(ymx)")
+                        print("\(idx)\t\(dxfKindUppercase(e.kind))\tlayer=\(e.layer)\txmin=\(xmn)\tymin=\(ymn)\txmax=\(xmx)\tymax=\(ymx)\tdesc=\(entityDescription(e))")
                     }
                 } else if jsonMode {
                     print(parseFingerprintJSON(doc: doc, fileName: url.lastPathComponent))

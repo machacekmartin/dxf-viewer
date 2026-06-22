@@ -12,6 +12,26 @@ struct DXFInsert: Sendable {
     let isDim: Bool
 }
 
+struct HatchBoundary: Sendable {
+    var verts: [CGPoint]
+    var closed: Bool
+}
+
+struct HatchPatternLine: Sendable {
+    var angleDeg: CGFloat        // final stripe angle (entity 52 + pattern-line 53)
+    var basePoint: CGPoint       // codes 43/44 (already scaled + rotated by entity angle)
+    var offset: CGPoint          // codes 45/46 (scaled + rotated). Perpendicular delta between parallels.
+    var dashes: [CGFloat]        // code 49 entries. Empty → solid line. Positive = dash, negative = gap.
+}
+
+struct HatchData: Sendable {
+    var boundaries: [HatchBoundary]
+    var isSolid: Bool            // code 70
+    var pattern: [HatchPatternLine]
+    var patternScale: CGFloat    // code 41 (kept for diagnostics)
+    var patternAngle: CGFloat    // code 52 (kept for diagnostics)
+}
+
 struct DXFEntity: Sendable {
     enum Kind: Sendable {
         case line(CGPoint, CGPoint)
@@ -24,7 +44,7 @@ struct DXFEntity: Sendable {
         case text(CGPoint, String, CGFloat, CGFloat, Int, Int, CGFloat, CGFloat)
         case ellipse(CGPoint, CGPoint, CGFloat, CGFloat, CGFloat)
         case spline([CGPoint], Int, [Double], Bool)
-        case hatch([CGPoint])
+        case hatch(HatchData)
         indirect case dimension([DXFEntity])
         case leader([CGPoint], CGFloat)
         case insert(DXFInsert)
