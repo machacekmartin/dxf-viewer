@@ -29,7 +29,7 @@ rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
 
 say "Regenerating AppIcon.icns"
-swift "$ROOT/tools/make-icon.swift" >/dev/null
+bash "$ROOT/tools/make-icon.sh" >/dev/null
 
 # macOS 26 (Tahoe) is Apple-Silicon-only — Intel Mac support was dropped at
 # the OS level — so a universal slice would be dead weight. Building arm64.

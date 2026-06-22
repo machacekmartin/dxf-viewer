@@ -6,6 +6,18 @@ All notable changes to DXF Viewer are documented here. Format follows
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-06-22
+
+### Changed
+- New app icon: 3D glass + dark-charcoal interlocking glyph replaces the
+  procedural slate/grid placeholder. Source PNG lives at
+  `tools/icon-source.png`; `tools/make-icon.sh` regenerates the iconset and
+  `.icns` from it using stock macOS tools (sips + iconutil).
+
+### Removed
+- `tools/make-icon.swift` (procedural placeholder generator, superseded by
+  the artwork-driven pipeline above).
+
 ## [1.0.1] - 2026-06-22
 
 ### Fixed
