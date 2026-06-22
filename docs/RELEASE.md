@@ -1,9 +1,7 @@
 # Releasing a new version
 
-Quick checklist for shipping `vX.Y.Z`. For first-time setup (Sparkle keys,
-Gumroad product, GitHub Pages) see [PUBLISHING.md](PUBLISHING.md).
-
-Replace `1.1.0` with the actual new version in every step below.
+Quick checklist for shipping `vX.Y.Z`. Replace `1.1.0` with the actual new
+version in every step below.
 
 > **Run every command in this file from the repo root**
 > (`cd /Users/machacekmartin/Code/dxf-viewer`).

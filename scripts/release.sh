@@ -6,7 +6,7 @@
 #   dist/DXFViewer-<version>.zip   same .app, easier for Sparkle
 #
 # Buyers will see Gatekeeper's "can't be opened" dialog on first launch.
-# README documents the right-click → Open workaround.
+# Workaround: right-click .app → Open the first time.
 #
 # Optional env: VERSION  (default: read from Info.plist)
 #               DIST_DIR (default: dist)

@@ -5,7 +5,7 @@ report which files agree.
 Usage:
     tools/.venv/bin/python tools/validate.py [dir]
 
-Default dir is examples/dxf-parser. The Swift binary is expected at
+Default dir is examples/. The Swift binary is expected at
 .build/release/DXFViewer (build with `swift build -c release` first).
 
 Pass criteria (strict; tunable here, not in the harness):
@@ -100,7 +100,7 @@ def compare(ours: dict, ref: dict) -> list[str]:
 
 
 def main():
-    target = Path(sys.argv[1]) if len(sys.argv) > 1 else REPO / "examples" / "dxf-parser"
+    target = Path(sys.argv[1]) if len(sys.argv) > 1 else REPO / "examples"
     files = sorted(target.glob("*.dxf"))
     if not files:
         print(f"no .dxf files in {target}", file=sys.stderr)
