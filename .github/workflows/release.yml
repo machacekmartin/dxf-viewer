@@ -1,0 +1,33 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-and-release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.app
+
+      - name: Build + package (ad-hoc, no Apple Dev cert)
+        run: bash scripts/release.sh
+
+      - name: Upload DMG + ZIP to GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            dist/*.dmg
+            dist/*.zip
+          generate_release_notes: true
+
+      - name: Gumroad reminder
+        run: |
+          echo "::notice::DMG built. Upload dist/*.dmg to Gumroad as the new product file."
+          echo "::notice::Sparkle: run sign_update on the DMG and update appcast.xml."

@@ -3,11 +3,13 @@ import UniformTypeIdentifiers
 import AppKit
 
 struct ContentView: View {
+    @EnvironmentObject private var coordinator: OpenCoordinator
     @State private var document: DXFDocument? = nil
     @State private var renderModel: DXFRenderModel? = nil
     @State private var loadedURL: URL? = nil
     @State private var showImporter = false
     @State private var error: String? = nil
+    @State private var showErrorAlert = false
     @State private var dropTargeted = false
     @State private var isLoading = false
     @State private var selection: Set<DXFSelector> = []
@@ -35,9 +37,6 @@ struct ContentView: View {
                 }
             }
             panelToggle.padding(16)
-            if let error {
-                VStack { Spacer(); Text(error).foregroundStyle(.red).padding() }
-            }
             if isLoading {
                 ProgressView()
                     .controlSize(.large)
@@ -56,11 +55,28 @@ struct ContentView: View {
             allowedContentTypes: [.data],
             allowsMultipleSelection: false
         ) { result in
-            if let url = try? result.get().first { Task { await load(url: url) } }
+            if let url = try? result.get().first { coordinator.open(url) }
         }
-        .onAppear { installEscMonitor() }
+        .onAppear {
+            installEscMonitor()
+            // Pick up a URL queued before the window appeared (Finder-open at launch).
+            if let url = coordinator.pendingOpen {
+                coordinator.pendingOpen = nil
+                Task { await load(url: url) }
+            }
+        }
         .onDisappear {
             if let m = escMonitor { NSEvent.removeMonitor(m); escMonitor = nil }
+        }
+        .onChange(of: coordinator.pendingOpen) { _, url in
+            guard let url else { return }
+            coordinator.pendingOpen = nil
+            Task { await load(url: url) }
+        }
+        .alert("Couldn't open file", isPresented: $showErrorAlert, presenting: error) { _ in
+            Button("OK", role: .cancel) {}
+        } message: { msg in
+            Text(msg)
         }
     }
 
@@ -96,6 +112,7 @@ struct ContentView: View {
         .glassIconButton()
         .disabled(document == nil)
         .opacity(document == nil ? 0.4 : 1)
+        .accessibilityLabel(panelOpen ? "Hide layer panel" : "Show layer panel")
     }
 
     private func installEscMonitor() {
@@ -130,6 +147,7 @@ struct ContentView: View {
             selection.removeAll()
         } catch {
             self.error = "Parse failed: \(error.localizedDescription)"
+            self.showErrorAlert = true
         }
         isLoading = false
     }
@@ -138,7 +156,7 @@ struct ContentView: View {
         guard let provider = providers.first else { return false }
         _ = provider.loadDataRepresentation(forTypeIdentifier: UTType.fileURL.identifier) { data, _ in
             guard let data, let url = URL(dataRepresentation: data, relativeTo: nil, isAbsolute: true) else { return }
-            Task { @MainActor in await load(url: url) }
+            Task { @MainActor in coordinator.open(url) }
         }
         return true
     }

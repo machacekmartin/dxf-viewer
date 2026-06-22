@@ -2,10 +2,16 @@ import SwiftUI
 import Foundation
 import AppKit
 
-// Build a structured fingerprint of the parse result for the cross-check harness
-// (tools/validate.py). Schema is shared with tools/ezdxf_ref.py: { file, ok,
-// entity_count, by_kind: {LINE: n, …}, by_layer: {name: n}, bounds: {xmin,…},
-// mm_per_unit, sample_texts }.
+// MARK: - Notifications driven by menu commands
+
+extension Notification.Name {
+    static let dxfZoomIn  = Notification.Name("com.machacekmartin.dxfviewer.zoomIn")
+    static let dxfZoomOut = Notification.Name("com.machacekmartin.dxfviewer.zoomOut")
+    static let dxfFit     = Notification.Name("com.machacekmartin.dxfviewer.fit")
+}
+
+// MARK: - CLI fingerprint helpers (used by tools/validate.py)
+
 func parseFingerprintJSON(doc: DXFDocument, fileName: String) -> String {
     var byKind: [String: Int] = [:]
     var byLayer: [String: Int] = [:]
@@ -37,15 +43,11 @@ func parseFingerprintJSON(doc: DXFDocument, fileName: String) -> String {
     return String(data: data, encoding: .utf8) ?? "{}"
 }
 
-// Single-entity bounds helper for --dump. Reuses the document-level computeBounds
-// indirectly via a one-element list.
 func entityBBox(_ e: DXFEntity) -> (CGFloat, CGFloat, CGFloat, CGFloat) {
     let r = computeBoundsForOne(e)
     return (r.minX, r.minY, r.maxX, r.maxY)
 }
 
-// Match ezdxf's `dxftype()` output so the validator can diff like-for-like.
-// LWPOLYLINE collapses into POLYLINE on both sides; MTEXT collapses into TEXT.
 func dxfKindUppercase(_ k: DXFEntity.Kind) -> String {
     switch k {
     case .line: return "LINE"
@@ -63,10 +65,33 @@ func dxfKindUppercase(_ k: DXFEntity.Kind) -> String {
     }
 }
 
+// MARK: - AppKit delegate (Finder open + drag-onto-Dock + crash logger)
+
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        CrashLogger.shared.install()
+        Task { @MainActor in _ = UpdaterController.shared }
+    }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        Task { @MainActor in
+            for url in urls { OpenCoordinator.shared.open(url) }
+        }
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+}
+
+// MARK: - App entry
+
 @main
 struct DXFViewerApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @StateObject private var coordinator = OpenCoordinator.shared
+    @StateObject private var updater = UpdaterController.shared
+
     init() {
-        // ponytail: raw binary launched from terminal doesn't auto-foreground; force it.
+        // Raw binary launched from terminal doesn't auto-foreground; force it.
         DispatchQueue.main.async {
             NSApp.setActivationPolicy(.regular)
             NSApp.activate(ignoringOtherApps: true)
@@ -108,13 +133,56 @@ struct DXFViewerApp: App {
             }
         }
     }
+
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environmentObject(coordinator)
                 .ignoresSafeArea()
                 .frame(minWidth: 800, minHeight: 600)
         }
         .windowStyle(.hiddenTitleBar)
         .windowToolbarStyle(.unifiedCompact(showsTitle: false))
+        .commands {
+            CommandGroup(replacing: .newItem) {
+                Button("Open…") { coordinator.openPicker() }
+                    .keyboardShortcut("o", modifiers: .command)
+                Menu("Open Recent") {
+                    if coordinator.recents.isEmpty {
+                        Text("No Recent Documents")
+                    } else {
+                        ForEach(coordinator.recents, id: \.self) { url in
+                            Button(url.lastPathComponent) { coordinator.open(url) }
+                        }
+                        Divider()
+                        Button("Clear Menu") { coordinator.clearRecents() }
+                    }
+                }
+            }
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") { updater.checkForUpdates() }
+            }
+            CommandGroup(after: .toolbar) {
+                Button("Zoom In") {
+                    NotificationCenter.default.post(name: .dxfZoomIn, object: nil)
+                }
+                .keyboardShortcut("+", modifiers: .command)
+                Button("Zoom Out") {
+                    NotificationCenter.default.post(name: .dxfZoomOut, object: nil)
+                }
+                .keyboardShortcut("-", modifiers: .command)
+                Button("Fit to Window") {
+                    NotificationCenter.default.post(name: .dxfFit, object: nil)
+                }
+                .keyboardShortcut("0", modifiers: .command)
+            }
+            CommandGroup(replacing: .help) {
+                Button("DXF Viewer Help") {
+                    if let url = URL(string: "https://github.com/machacekmartin/dxf-viewer#readme") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+            }
+        }
     }
 }

@@ -1,0 +1,28 @@
+<?xml version="1.0" standalone="yes"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"
+     xmlns:dc="http://purl.org/dc/elements/1.1/"
+     version="2.0">
+  <channel>
+    <title>DXF Viewer</title>
+    <link>https://machacekmartin.github.io/dxf-viewer/appcast.xml</link>
+    <description>Most recent DXF Viewer releases.</description>
+    <language>en</language>
+
+    <item>
+      <title>Version 1.0.0</title>
+      <pubDate>Mon, 22 Jun 2026 12:00:00 +0000</pubDate>
+      <sparkle:version>1</sparkle:version>
+      <sparkle:shortVersionString>1.0.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[
+        <h2>1.0.0 — first public release</h2>
+        <p>Native macOS viewer for AutoCAD DXF files. Liquid Glass UI, fast parsing, per-layer toggling.</p>
+      ]]></description>
+      <enclosure
+        url="https://github.com/machacekmartin/dxf-viewer/releases/download/v1.0.0/DXFViewer-1.0.0.dmg"
+        sparkle:edSignature="REPLACE_WITH_SIGN_UPDATE_OUTPUT"
+        length="0"
+        type="application/octet-stream" />
+    </item>
+  </channel>
+</rss>

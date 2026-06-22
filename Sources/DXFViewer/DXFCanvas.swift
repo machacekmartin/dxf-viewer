@@ -6,6 +6,7 @@ final class ViewState: ObservableObject {
     @Published var scale: CGFloat = 1
     @Published var offset: CGSize = .zero
     private var monitor: Any?
+    private var observers: [NSObjectProtocol] = []
 
     // Zoom around the current visual center: scale offset by the same factor so the
     // world point at screen center stays put.
@@ -62,10 +63,20 @@ final class ViewState: ObservableObject {
             default: return event
             }
         }
+        observers.append(NotificationCenter.default.addObserver(forName: .dxfZoomIn, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.animateZoom(to: max(0.01, min(1000, (self?.scale ?? 1) * 1.25))) }
+        })
+        observers.append(NotificationCenter.default.addObserver(forName: .dxfZoomOut, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.animateZoom(to: max(0.01, min(1000, (self?.scale ?? 1) * 0.8))) }
+        })
+        observers.append(NotificationCenter.default.addObserver(forName: .dxfFit, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.animate(to: 1, targetOffset: .zero) }
+        })
     }
 
     isolated deinit {
         if let monitor { NSEvent.removeMonitor(monitor) }
+        for o in observers { NotificationCenter.default.removeObserver(o) }
     }
 }
 
@@ -123,7 +134,16 @@ struct DXFCanvas: View {
                 ScaleLengthIndicator(s: scaleMM(in: geo.size))
                     .padding(16)
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text("DXF drawing canvas"))
+            .accessibilityValue(Text(accessibilitySummary))
         }
+    }
+
+    private var accessibilitySummary: String {
+        guard let doc = document else { return "No drawing loaded" }
+        let layerCount = doc.layers.count
+        return "\(doc.entities.count) entities across \(layerCount) layer\(layerCount == 1 ? "" : "s"). Zoom \(Int(state.scale * 100)) percent."
     }
 
     // MARK: - Entity drawing
@@ -279,6 +299,7 @@ struct DXFCanvas: View {
                 }
             }
             .modifier(GlassImportButtonStyling(loaded: loadedFileName != nil))
+            .accessibilityLabel(loadedFileName.map { "Currently viewing \($0). Open another DXF" } ?? "Open DXF file")
             Button {
                 state.animate(to: 1, targetOffset: .zero, duration: 0.45)
             } label: {
@@ -286,11 +307,13 @@ struct DXFCanvas: View {
                     .font(.system(size: 15, weight: .medium))
             }
             .glassIconButton()
+            .accessibilityLabel("Fit drawing to window")
             Button { showGrid.toggle() } label: {
                 Image(systemName: showGrid ? "square.grid.3x3.fill" : "square.grid.3x3")
                     .font(.system(size: 15, weight: .medium))
             }
             .glassIconButton()
+            .accessibilityLabel(showGrid ? "Hide grid" : "Show grid")
             Menu {
                 ForEach([10, 25, 50, 100, 200, 500, 1000] as [Int], id: \.self) { ratio in
                     Button("1:\(ratio)") {
