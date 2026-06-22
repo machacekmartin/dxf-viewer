@@ -78,8 +78,21 @@ https://github.com/machacekmartin/dxf-viewer/releases/download/v1.1.0/DXFViewer-
 
 ## 4. Sign the DMG for Sparkle
 
+> **Sign the DMG GitHub serves, not the local one.** The `release.yml`
+> workflow rebuilds the DMG on its own runner after the tag push, and
+> overwrites the asset you uploaded in step 3. The hosted bytes differ
+> from the local bytes (compression nonces, codesign timestamps), so a
+> signature over the local file fails Sparkle's EdDSA check with
+> *"improperly signed"*.
+
+First wait for the workflow to finish, then download the hosted DMG and
+sign that:
+
 ```sh
-./.build/artifacts/sparkle/Sparkle/bin/sign_update dist/DXFViewer-1.1.0.dmg
+gh run watch                                  # wait for the release workflow
+curl -sSL -o /tmp/DXFViewer-1.1.0.dmg \
+    https://github.com/machacekmartin/dxf-viewer/releases/download/v1.1.0/DXFViewer-1.1.0.dmg
+./.build/artifacts/sparkle/Sparkle/bin/sign_update /tmp/DXFViewer-1.1.0.dmg
 ```
 
 macOS will prompt for keychain access — click **Allow** (or **Always
@@ -88,10 +101,12 @@ Allow** if you've already done that once).
 Output line:
 
 ```
-sparkle:edSignature="…base64…" length="1766294"
+sparkle:edSignature="…base64…" length="2207272"
 ```
 
-Keep that line handy for step 5.
+Keep that line handy for step 5. The `length` is the exact byte count
+of the hosted DMG and **must** match — Sparkle re-downloads, checks both
+length and signature, and refuses any mismatch.
 
 ---
 
@@ -174,9 +189,10 @@ If Sparkle reports an error:
 
 - Live appcast not updated? `curl` the URL and check the signature is the
   new one (CDN can take a few minutes).
-- Signature mismatch? You probably ran `sign_update` on a different DMG
-  than the one in the GitHub Release. Re-`sign_update` the exact file
-  served at the enclosure URL.
+- Signature mismatch / *"improperly signed"*? You signed your local DMG
+  instead of the one the `release.yml` workflow rebuilt and uploaded.
+  See step 4 — always `curl` the hosted DMG and re-run `sign_update` on
+  that file, then update the appcast.
 
 ---
 
@@ -188,7 +204,8 @@ If Sparkle reports an error:
 - [ ] `bash scripts/release.sh` produces fresh DMG + ZIP
 - [ ] `git tag vX.Y.Z` pushed
 - [ ] GitHub Release published with both assets
-- [ ] `sign_update` run on the released DMG
+- [ ] `gh run watch` until release.yml finishes (it overwrites the asset)
+- [ ] `sign_update` run on the **hosted** DMG (curl'd from the release URL)
 - [ ] `appcast.xml` prepended on `gh-pages` (and synced to `main`)
 - [ ] Live appcast served from GitHub Pages
 - [ ] Gumroad DMG replaced

@@ -64,9 +64,23 @@ else
     say "Buyers will need to right-click → Open on first launch."
 fi
 
-say "Sparkle EdDSA sign step (run manually after this):"
-echo "    ./.build/checkouts/Sparkle/bin/sign_update \"$DMG_PATH\""
-echo "  → paste sparkle:edSignature + length into appcast.xml"
+say "Sparkle EdDSA sign step (run manually AFTER the GitHub release is live):"
+cat <<EOF
+  ⚠️  Do NOT sign $DMG_PATH directly. release.yml rebuilds the DMG on its
+      own runner after the tag push and overwrites the asset you uploaded;
+      the served bytes differ from the local bytes (UDZO compression nonce,
+      codesign timestamp). Sparkle hashes what users download, so a
+      signature over the local file ships a broken update.
+
+  After 'git push origin v$VERSION':
+
+      gh run watch
+      curl -sSL -o /tmp/DXFViewer-$VERSION.dmg \\
+          https://github.com/machacekmartin/dxf-viewer/releases/download/v$VERSION/DXFViewer-$VERSION.dmg
+      ./.build/artifacts/sparkle/Sparkle/bin/sign_update /tmp/DXFViewer-$VERSION.dmg
+
+  Paste sparkle:edSignature + length into appcast.xml.
+EOF
 
 say "Done"
 ls -lh "$DMG_PATH" "$ZIP_PATH"
