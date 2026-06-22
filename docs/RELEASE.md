@@ -179,9 +179,9 @@ curl -sS https://machacekmartin.github.io/dxf-viewer/appcast.xml | head
 
 On a Mac with the **previous** version installed:
 
-1. Quit DXFViewer if it's running.
+1. Quit DXF Viewer if it's running.
 2. Launch it.
-3. **DXFViewer → Check for Updates…**
+3. **DXF Viewer → Check for Updates…**
 4. Sparkle should detect 1.1.0, show the changelog, offer **Install Update**.
 5. Click → it downloads, EdDSA-verifies, replaces, relaunches.
 

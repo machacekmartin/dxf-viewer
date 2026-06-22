@@ -1,56 +1,30 @@
-![DXF Viewer](https://machacekmartin.github.io/dxf-viewer/hero.png)
-
-# DXF Viewer
-
-A native macOS reader for AutoCAD DXF drawings. Fast, free, and quiet.
-
-[**Get it on Gumroad**](https://machacekmartin.gumroad.com/l/dxf-viewer-macos) · [Free on GitHub Releases](https://github.com/machacekmartin/dxf-viewer/releases/latest) · [Website](https://machacekmartin.github.io/dxf-viewer/)
-
-![DXF Viewer showing floorplan.dxf with the layers sidebar](https://machacekmartin.github.io/dxf-viewer/preview.png)
+<img src="https://machacekmartin.github.io/dxf-viewer/hero.png" alt="DXF Viewer" width="100%">
 
 ## Features
 
-- **Eleven DXF entities, decoded.** LINE, CIRCLE, ARC, POLYLINE, TEXT, ELLIPSE, SPLINE, HATCH, DIMENSION, LEADER, INSERT. Hatches keep their patterns; polygons keep their holes.
-- **Layers in their place.** Toggle visibility, recolor, search by name.
-- **Scale that means something.** Live scale bar in millimetres, centimetres, or metres. Pinch or `⌘`-scroll to zoom. Press `F` to fit.
-- **Async parsing.** A 30-MB drawing parses on a background thread; the UI stays responsive.
-- **Native, end to end.** SwiftUI and Liquid Glass on macOS 26. Finder double-click, drag-onto-Dock, Open Recent, VoiceOver.
-- **Quiet auto-updates.** Sparkle, EdDSA-signed, no telemetry, no account.
+- Eleven DXF entities — LINE, CIRCLE, ARC, POLYLINE, TEXT, ELLIPSE, SPLINE, HATCH, DIMENSION, LEADER, INSERT
+- Per-layer visibility, recolor, and search
+- Live scale bar in mm / cm / m
+- Async parsing on a background thread
+- Native SwiftUI on macOS 26 with Sparkle auto-updates
 
 ## Requirements
 
 - macOS 26 or later
 - Universal binary (Apple Silicon + Intel)
-- ~2.6 MB
 
-## Install
+[**Get it on Gumroad**](https://machacekmartin.gumroad.com/l/dxf-viewer-macos) · [Free on GitHub Releases](https://github.com/machacekmartin/dxf-viewer/releases/latest) · [Website](https://machacekmartin.github.io/dxf-viewer/)
 
-**Gumroad** — pay what feels right, even nothing:
-<https://machacekmartin.gumroad.com/l/dxf-viewer-macos>
-
-**GitHub Releases** — the same DMG, no checkout:
-<https://github.com/machacekmartin/dxf-viewer/releases/latest>
-
-Both builds are ad-hoc signed. On first launch, right-click → Open to bypass Gatekeeper.
-
-## Build from source
+## Build
 
 ```sh
-git clone https://github.com/machacekmartin/dxf-viewer.git
-cd dxf-viewer
-bash scripts/release.sh           # produces dist/DXFViewer-x.y.z.{dmg,zip}
-# or
-swift build -c release            # CLI binary at .build/release/DXFViewer
+swift build -c release
 ```
 
-Requires Swift 6.2 and macOS 26 SDK.
-
-## Releases
-
-See [`CHANGELOG.md`](CHANGELOG.md) for version history. The Sparkle update feed lives at <https://machacekmartin.github.io/dxf-viewer/appcast.xml> and is consumed automatically by the running app.
-
-Release runbook for maintainers: [`docs/RELEASE.md`](docs/RELEASE.md).
+Requires Swift 6.2.
 
 ## License
 
-[MIT](LICENSE) © 2026 [Martin Machacek](https://github.com/machacekmartin)
+[GPL-3.0](LICENSE) © [Martin Machacek](https://github.com/machacekmartin)
+
+Forks are welcome — they just have to stay open-source and GPL too.

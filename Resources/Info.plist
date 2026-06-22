@@ -31,7 +31,7 @@
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSHumanReadableCopyright</key>
-    <string>© 2026 Martin Machacek. All rights reserved.</string>
+    <string>© 2026 Martin Machacek. Licensed under GPL-3.0-or-later.</string>
     <key>NSSupportsAutomaticTermination</key>
     <true/>
     <key>NSSupportsSuddenTermination</key>
