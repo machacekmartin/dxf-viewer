@@ -9,6 +9,24 @@
     <language>en</language>
 
     <item>
+      <title>Version 1.1.0</title>
+      <pubDate>Mon, 22 Jun 2026 22:30:00 +0000</pubDate>
+      <sparkle:version>4</sparkle:version>
+      <sparkle:shortVersionString>1.1.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[
+        <h2>1.1.0 — bundle renamed</h2>
+        <p>The app bundle is now <code>DXF Viewer.app</code> (with a space). The Dock, menu bar, About dialog, and Finder already showed "DXF Viewer"; this brings the on-disk filename and the Activity Monitor process name into line. <strong>If you pinned the app to the Dock, you'll need to re-pin it after this update.</strong></p>
+        <p>Also relicensed from MIT to GPL-3.0.</p>
+      ]]></description>
+      <enclosure
+        url="https://github.com/machacekmartin/dxf-viewer/releases/download/v1.1.0/DXFViewer-1.1.0.dmg"
+        sparkle:edSignature="NbC1KTxCN8Y2vWXEVgLKq+avMYkgbDVEAE+Ir3Bj9Egg24mlgHrPF44WkDUjmraYe2gdHHRNmreIMCMzJZ8kDA=="
+        length="2741150"
+        type="application/octet-stream" />
+    </item>
+
+    <item>
       <title>Version 1.0.2</title>
       <pubDate>Mon, 22 Jun 2026 21:19:09 +0000</pubDate>
       <sparkle:version>3</sparkle:version>
