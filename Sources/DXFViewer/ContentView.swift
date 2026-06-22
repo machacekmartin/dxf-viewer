@@ -94,7 +94,7 @@ struct EdgeDragBar: View {
             // instead of reading as a white wash over the scene.
             Rectangle()
                 .glassEffect(.clear, in: Rectangle())
-                .overlay(Color(red: 0.94, green: 0.95, blue: 0.97).opacity(0.55))
+                .overlay(Color(red: 0.97, green: 0.98, blue: 1.00).opacity(0.55))
                 .mask(
                     LinearGradient(
                         gradient: Gradient(stops: [
@@ -138,7 +138,7 @@ struct ContentView: View {
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            Color(red: 0.94, green: 0.95, blue: 0.97).ignoresSafeArea()
+            Color(red: 0.97, green: 0.98, blue: 1.00).ignoresSafeArea()
             DXFCanvas(
                 document: document,
                 loadedFileName: loadedURL?.lastPathComponent,
@@ -217,11 +217,6 @@ struct ContentView: View {
                 .symbolVariant(panelOpen ? .fill : .none)
         }
         .glassIconButton()
-        .glassTooltip(
-            panelOpen ? "Hide layers" : "Show layers",
-            panelOpen ? "Close the layer panel" : "Open the layer panel to browse and toggle layers",
-            edge: .bottom,
-            anchor: .trailing)
         .disabled(document == nil)
         .opacity(document == nil ? 0.4 : 1)
     }
@@ -408,44 +403,33 @@ struct LayerPanel: View {
                         if expandedLayers.contains(l.name) {
                             // ponytail: composite id — "line" repeats across layers, so id: \.name
                             // collides at LazyVStack level and the dup row renders empty.
+                            // Nested ScrollViews break scroll-wheel propagation on macOS
+                            // (the inner one swallows the event even when at its bounds),
+                            // so kinds + entities now flow inline in the outer ScrollView.
                             let kindItems = l.kinds.map { (id: kindKey(l.name, $0.name), kind: $0) }
-                            // Each expanded group scrolls inside a 240-pt window so one fat
-                            // layer (or one fat kind) can't push everything else off-screen.
-                            ScrollView {
-                                LazyVStack(spacing: 1) {
-                                    ForEach(kindItems, id: \.id) { item in
-                                        let k = item.kind
-                                        KindRow(
-                                            layerName: l.name,
-                                            kind: k,
-                                            isSelected: selection.contains(.kind(layer: l.name, kind: k.name)),
-                                            isFocused: focus == .kind(layer: l.name, kind: k.name),
-                                            isExpanded: expandedKinds.contains(kindKey(l.name, k.name)),
-                                            onTap: { focus = .kind(layer: l.name, kind: k.name); toggle(.kind(layer: l.name, kind: k.name)) },
-                                            onDisclose: { toggleExpand(kindOn: l.name, kind: k.name) }
+                            ForEach(kindItems, id: \.id) { item in
+                                let k = item.kind
+                                KindRow(
+                                    layerName: l.name,
+                                    kind: k,
+                                    isSelected: selection.contains(.kind(layer: l.name, kind: k.name)),
+                                    isFocused: focus == .kind(layer: l.name, kind: k.name),
+                                    isExpanded: expandedKinds.contains(kindKey(l.name, k.name)),
+                                    onTap: { focus = .kind(layer: l.name, kind: k.name); toggle(.kind(layer: l.name, kind: k.name)) },
+                                    onDisclose: { toggleExpand(kindOn: l.name, kind: k.name) }
+                                )
+                                if expandedKinds.contains(kindKey(l.name, k.name)) {
+                                    ForEach(k.indices, id: \.self) { i in
+                                        EntityRow(
+                                            index: i,
+                                            entity: entities[i],
+                                            isSelected: selection.contains(.entity(i)),
+                                            isFocused: focus == .entity(i),
+                                            onTap: { focus = .entity(i); toggle(.entity(i)) }
                                         )
-                                        if expandedKinds.contains(kindKey(l.name, k.name)) {
-                                            ScrollView {
-                                                LazyVStack(spacing: 1) {
-                                                    ForEach(k.indices, id: \.self) { i in
-                                                        EntityRow(
-                                                            index: i,
-                                                            entity: entities[i],
-                                                            isSelected: selection.contains(.entity(i)),
-                                                            isFocused: focus == .entity(i),
-                                                            onTap: { focus = .entity(i); toggle(.entity(i)) }
-                                                        )
-                                                    }
-                                                }
-                                            }
-                                            .frame(maxHeight: 240)
-                                            .scrollIndicators(.hidden)
-                                        }
                                     }
                                 }
                             }
-                            .frame(maxHeight: 240)
-                            .scrollIndicators(.hidden)
                         }
                     }
                     if filtered.isEmpty {
@@ -483,7 +467,7 @@ struct LayerPanel: View {
         .background(
             Rectangle()
                 .glassEffect(.clear, in: Rectangle())
-                .overlay(Color(red: 0.94, green: 0.95, blue: 0.97).opacity(0.78))
+                .overlay(Color(red: 0.97, green: 0.98, blue: 1.00).opacity(0.78))
         )
         .overlay(alignment: .leading) {
             // Glassy hairline edge — same vocabulary as the button hairlines.
@@ -928,96 +912,6 @@ struct FloatyIconButton: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-        .glassTooltip(help)
-    }
-}
-
-// `edge` picks the vertical side (above/below the host). `anchor` picks horizontal
-// alignment: .leading pins tooltip's left edge to the host's left edge (so the bubble
-// extends rightward — right pick for a button in the bottom-left corner); .trailing is
-// the mirror image for a top-right button; .center is the ScaleTooltip default.
-enum GlassTooltipEdge { case top, bottom }
-enum GlassTooltipAnchor { case leading, center, trailing }
-
-struct GlassTooltipModifier: ViewModifier {
-    let title: String
-    let description: String?
-    let edge: GlassTooltipEdge
-    let anchor: GlassTooltipAnchor
-    @State private var hovering = false
-
-    func body(content: Content) -> some View {
-        content
-            .onHover { hovering = $0 }
-            .overlay(alignment: overlayAlignment) {
-                // Inlined alignment guide — wrapping it in a separate ViewModifier
-                // (a `_ConditionalContent` underneath) breaks alignmentGuide propagation
-                // through to the parent's `.overlay` placement, which is why the bubble
-                // was previously appearing centered on the button instead of above it.
-                if edge == .top {
-                    bubble
-                        .alignmentGuide(.top) { d in d[.bottom] }
-                        .offset(y: -12)
-                        .scaleEffect(hovering ? 1 : 0.94, anchor: scaleAnchor)
-                } else {
-                    bubble
-                        .alignmentGuide(.bottom) { d in d[.top] }
-                        .offset(y: 12)
-                        .scaleEffect(hovering ? 1 : 0.94, anchor: scaleAnchor)
-                }
-            }
-    }
-
-    // Title + optional description mirror the layout of ScaleTooltip: leading-aligned
-    // VStack, 12pt semibold title, 11pt secondary description, glass capsule.
-    @ViewBuilder private var bubble: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.system(size: 12, weight: .semibold))
-            if let description {
-                Text(description)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .glassEffect(in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .fixedSize()
-        .opacity(hovering ? 1 : 0)
-        .allowsHitTesting(false)
-        .animation(.smooth(duration: 0.18), value: hovering)
-    }
-
-    private var overlayAlignment: Alignment {
-        switch (edge, anchor) {
-        case (.top, .leading): return .topLeading
-        case (.top, .center): return .top
-        case (.top, .trailing): return .topTrailing
-        case (.bottom, .leading): return .bottomLeading
-        case (.bottom, .center): return .bottom
-        case (.bottom, .trailing): return .bottomTrailing
-        }
-    }
-
-    private var scaleAnchor: UnitPoint {
-        switch (edge, anchor) {
-        case (.top, .leading): return .bottomLeading
-        case (.top, .center): return .bottom
-        case (.top, .trailing): return .bottomTrailing
-        case (.bottom, .leading): return .topLeading
-        case (.bottom, .center): return .top
-        case (.bottom, .trailing): return .topTrailing
-        }
-    }
-}
-
-extension View {
-    func glassTooltip(_ title: String,
-                      _ description: String? = nil,
-                      edge: GlassTooltipEdge = .top,
-                      anchor: GlassTooltipAnchor = .center) -> some View {
-        modifier(GlassTooltipModifier(title: title, description: description, edge: edge, anchor: anchor))
     }
 }
 
@@ -1364,10 +1258,6 @@ struct DXFCanvas: View {
                         }
                     }
                     .modifier(GlassImportButtonStyling(loaded: loadedFileName != nil))
-                    .glassTooltip(
-                        loadedFileName == nil ? "Import .dxf" : "Open another file",
-                        loadedFileName == nil ? "Choose a DXF drawing to open" : "Replace the current drawing with another DXF",
-                        anchor: .leading)
                     Button {
                         state.animate(to: 1, targetOffset: .zero, duration: 0.45)
                     } label: {
@@ -1375,16 +1265,11 @@ struct DXFCanvas: View {
                             .font(.system(size: 15, weight: .medium))
                     }
                     .glassIconButton()
-                    .glassTooltip("Reset view", "Center the drawing and fit it to the window", anchor: .leading)
                     Button { showGrid.toggle() } label: {
                         Image(systemName: showGrid ? "square.grid.3x3.fill" : "square.grid.3x3")
                             .font(.system(size: 15, weight: .medium))
                     }
                     .glassIconButton()
-                    .glassTooltip(
-                        showGrid ? "Hide grid" : "Show grid",
-                        showGrid ? "Turn off the background grid" : "Turn on the background grid",
-                        anchor: .leading)
                     Menu {
                         ForEach([10, 25, 50, 100, 200, 500, 1000] as [Int], id: \.self) { ratio in
                             Button("1:\(ratio)") {
