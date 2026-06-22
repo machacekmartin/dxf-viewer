@@ -5,6 +5,10 @@ Gumroad product, GitHub Pages) see [PUBLISHING.md](PUBLISHING.md).
 
 Replace `1.1.0` with the actual new version in every step below.
 
+> **Run every command in this file from the repo root**
+> (`cd /Users/machacekmartin/Code/dxf-viewer`).
+> Paths like `./.build/...` are relative.
+
 ---
 
 ## 1. Bump version

@@ -4,6 +4,10 @@ End-to-end runbook for shipping releases on **Gumroad** **without** the
 Apple Developer Program. Sparkle still works for auto-update — it uses
 its own EdDSA keypair, unrelated to Apple.
 
+> **Run every command in this file from the repo root**
+> (`cd /Users/machacekmartin/Code/dxf-viewer`).
+> Paths like `./.build/...` are relative.
+
 > If you ever decide to pay $99/yr for an Apple Developer membership,
 > just set `SIGN_ID` and `NOTARY_KEYCHAIN_PROFILE` env vars in your shell
 > and the existing `scripts/release.sh` will sign + notarize automatically.
@@ -31,7 +35,7 @@ its own EdDSA keypair, unrelated to Apple.
 2. `swift package resolve`.
 3. Generate the keypair (one-time):
    ```sh
-   ./.build/checkouts/Sparkle/bin/generate_keys
+   ./.build/artifacts/sparkle/Sparkle/bin/generate_keys
    ```
 4. Copy the printed **public key** into `Resources/Info.plist` →
    `SUPublicEDKey`. **Never** commit the private key — it stays in your
@@ -76,7 +80,7 @@ git push origin v1.1.0
 #    (replace the previous DMG on the product page).
 
 # 5. Sparkle: sign the DMG and update the appcast
-./.build/checkouts/Sparkle/bin/sign_update dist/DXFViewer-1.1.0.dmg
+./.build/artifacts/sparkle/Sparkle/bin/sign_update dist/DXFViewer-1.1.0.dmg
 # → "sparkle:edSignature=…  length=…"
 #
 # Edit appcast.xml: add a new <item> at the top with:
