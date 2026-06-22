@@ -9,6 +9,28 @@
     <language>en</language>
 
     <item>
+      <title>Version 1.0.1</title>
+      <pubDate>Mon, 22 Jun 2026 20:47:30 +0000</pubDate>
+      <sparkle:version>2</sparkle:version>
+      <sparkle:shortVersionString>1.0.1</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[
+        <h2>1.0.1 — HATCH rendering fixes</h2>
+        <ul>
+          <li>Multi-boundary hatches (frames with holes) no longer render as triangles.</li>
+          <li>Striped patterns like ANSI31 now draw their diagonal lines instead of just the outline.</li>
+          <li>Solid hatches fill with the entity color.</li>
+          <li>Edge-defined hatch boundaries (line/arc edges) no longer get dropped.</li>
+        </ul>
+      ]]></description>
+      <enclosure
+        url="https://github.com/machacekmartin/dxf-viewer/releases/download/v1.0.1/DXFViewer-1.0.1.dmg"
+        sparkle:edSignature="H0Wfy3mZTOq9o5atZwNJdjqhKNplLNOuRwBskWJsCq3bXkziYQb1bnneKgov3Wvo0vZasNnV5SH7iF47+29eDA=="
+        length="1765909"
+        type="application/octet-stream" />
+    </item>
+
+    <item>
       <title>Version 1.0.0</title>
       <pubDate>Mon, 22 Jun 2026 12:00:00 +0000</pubDate>
       <sparkle:version>1</sparkle:version>
