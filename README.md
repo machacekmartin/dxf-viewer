@@ -107,7 +107,8 @@ tools/
     ci.yml                 # PR / push CI
     release.yml            # Tag-driven release pipeline
 appcast.xml                # Sparkle update feed
-docs/PUBLISHING.md         # Release runbook
+docs/PUBLISHING.md         # First-time publishing setup
+docs/RELEASE.md            # Per-version release checklist
 ```
 
 ## License
