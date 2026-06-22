@@ -9,7 +9,7 @@ dependencies at the parser layer — the DXF parser is hand-rolled.
 
 ## Download
 
-- **Gumroad** *(primary)* — <https://gumroad.com/l/dxf-viewer> *(link placeholder until product is published)*
+- **Gumroad** *(primary)* — <https://machacekmartin.gumroad.com/l/dxf-viewer-macos>
 - **GitHub Releases** *(free)* — <https://github.com/machacekmartin/dxf-viewer/releases>
 
 Built-in auto-update via Sparkle keeps you on the latest version once
