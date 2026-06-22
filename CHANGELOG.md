@@ -6,6 +6,26 @@ All notable changes to DXF Viewer are documented here. Format follows
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-06-22
+
+### Fixed
+- HATCH entities with multiple boundary paths (e.g. frames with inner holes)
+  no longer render as triangles. The parser was concatenating every boundary
+  path's vertices into one polygon, drawing diagonal seams between paths.
+  Each path is now its own closed sub-path with even-odd hole handling.
+- Code-98 seed points were being captured as boundary vertices, polluting
+  hatch outlines with stray points (e.g. floorplan.dxf hatch #145 had 10
+  reported verts instead of the actual 8).
+- Edge-defined HATCH boundaries (line/arc/ellipse/spline edges, code 92
+  without the polyline bit) no longer cause the entity to be dropped
+  entirely.
+
+### Added
+- HATCH pattern rendering: striped patterns like ANSI31 now draw their
+  inline pattern lines (codes 53/43/44/45/46/79/49) by scanline-clipping
+  each parallel line against the boundary polygon. Solid hatches (code
+  70 = 1) fill with the entity color.
+
 ## [1.0.0] - 2026-06-22
 
 ### Added
