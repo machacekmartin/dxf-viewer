@@ -5,13 +5,19 @@ import AppKit
 final class ViewState: ObservableObject {
     @Published var scale: CGFloat = 1
     @Published var offset: CGSize = .zero
+    // Set by DXFCanvas .onContinuousHover. Gates the scroll-wheel monitor so the
+    // LayerPanel's ScrollView gets its own scroll events instead of being eaten here.
+    var hovered = false
     private var monitor: Any?
     private var observers: [NSObjectProtocol] = []
 
     // Zoom around the current visual center: scale offset by the same factor so the
     // world point at screen center stays put.
     func zoom(by raw: CGFloat) {
-        let target = max(0.01, min(1000, scale * raw))
+        // Cap per-event step so a single big trackpad / momentum delta can't saturate
+        // the [0.01, 1000] clamp in one frame and leave zoom looking dead.
+        let step = max(0.5, min(2, raw))
+        let target = max(0.01, min(1000, scale * step))
         let factor = target / scale
         scale = target
         offset = CGSize(width: offset.width * factor, height: offset.height * factor)
@@ -47,7 +53,9 @@ final class ViewState: ObservableObject {
 
     init() {
         monitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel, .magnify]) { [weak self] event in
-            guard let self else { return event }
+            // Pass through when cursor isn't over the canvas, so LayerPanel's ScrollView
+            // (and anything else) receives its own scroll events.
+            guard let self, self.hovered else { return event }
             switch event.type {
             case .scrollWheel:
                 if event.modifierFlags.contains(.shift) {
@@ -126,6 +134,9 @@ struct DXFCanvas: View {
                     }
                     .onEnded { _ in lastDrag = .zero }
             )
+            .onContinuousHover { phase in
+                if case .active = phase { state.hovered = true } else { state.hovered = false }
+            }
             .overlay(alignment: .bottomLeading) {
                 controlBar(geo: geo)
             }

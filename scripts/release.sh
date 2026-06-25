@@ -85,7 +85,11 @@ cat <<EOF
   Paste sparkle:edSignature + length into appcast.xml.
 EOF
 
+# Stable-name copy so Gumroad (and any other paywall) can point at
+# https://github.com/.../releases/latest/download/DXFViewer.dmg forever.
+# Sparkle still uses the versioned URL via appcast.xml.
+STABLE_DMG="$DIST_DIR/DXFViewer.dmg"
+cp "$DMG_PATH" "$STABLE_DMG"
+
 say "Done"
-ls -lh "$DMG_PATH" "$ZIP_PATH"
-echo
-echo "Upload \"$DMG_PATH\" to Gumroad as the product file."
+ls -lh "$DMG_PATH" "$ZIP_PATH" "$STABLE_DMG"

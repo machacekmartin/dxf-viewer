@@ -6,6 +6,17 @@ All notable changes to DXF Viewer are documented here. Format follows
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-06-25
+
+### Fixed
+- Layer panel sidebar can now be scrolled. The canvas's scroll-wheel
+  monitor was capturing every scroll event in the app, so the panel's
+  scroll view never received any. It now only fires while the cursor
+  is over the canvas.
+- Zoom no longer gets stuck after aggressive trackpad or momentum
+  scrolls. Per-event zoom step is now capped so a single big delta
+  can't slam the scale into its clamp in one frame.
+
 ## [1.1.0] - 2026-06-23
 
 ### Changed
