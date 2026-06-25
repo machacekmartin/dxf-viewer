@@ -9,6 +9,26 @@
     <language>en</language>
 
     <item>
+      <title>Version 1.1.1</title>
+      <pubDate>Thu, 25 Jun 2026 12:15:00 +0000</pubDate>
+      <sparkle:version>5</sparkle:version>
+      <sparkle:shortVersionString>1.1.1</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[
+        <h2>1.1.1 — scroll &amp; zoom fixes</h2>
+        <ul>
+          <li>Layer panel sidebar can now be scrolled.</li>
+          <li>Zoom no longer gets stuck after aggressive trackpad scrolls.</li>
+        </ul>
+      ]]></description>
+      <enclosure
+        url="https://github.com/machacekmartin/dxf-viewer/releases/download/v1.1.1/DXFViewer-1.1.1.dmg"
+        sparkle:edSignature="yQ5Osr0DnpHxTDdnyFexqFB/EhYuhrudZGiN6PiZpwN1CLGMr1uwfqf0EcadCCsqLcrP83U4yaU7iIJN3BerBw=="
+        length="2714767"
+        type="application/octet-stream" />
+    </item>
+
+    <item>
       <title>Version 1.1.0</title>
       <pubDate>Mon, 22 Jun 2026 22:30:00 +0000</pubDate>
       <sparkle:version>4</sparkle:version>
