@@ -169,59 +169,68 @@ struct LayerPanel: View {
     }
 
     private var list: some View {
-        ScrollView {
-            LazyVStack(spacing: 1) {
-                ForEach(filtered, id: \.name) { l in
-                    LayerRow(
-                        info: l,
-                        isSelected: selection.contains(.layer(l.name)),
-                        isFocused: focus == .layer(l.name),
-                        isExpanded: expandedLayers.contains(l.name),
-                        onTap: { focus = .layer(l.name); toggle(.layer(l.name)) },
-                        onDisclose: { toggleExpand(layer: l.name) }
-                    )
-                    if expandedLayers.contains(l.name) {
-                        // Composite id — "line" repeats across layers, so id: \.name
-                        // collides at LazyVStack level and dup rows render empty.
-                        let kindItems = l.kinds.map { (id: kindKey(l.name, $0.name), kind: $0) }
-                        ForEach(kindItems, id: \.id) { item in
-                            let k = item.kind
-                            KindRow(
-                                layerName: l.name,
-                                kind: k,
-                                isSelected: selection.contains(.kind(layer: l.name, kind: k.name)),
-                                isFocused: focus == .kind(layer: l.name, kind: k.name),
-                                isExpanded: expandedKinds.contains(kindKey(l.name, k.name)),
-                                onTap: { focus = .kind(layer: l.name, kind: k.name); toggle(.kind(layer: l.name, kind: k.name)) },
-                                onDisclose: { toggleExpand(kindOn: l.name, kind: k.name) }
-                            )
-                            if expandedKinds.contains(kindKey(l.name, k.name)) {
-                                ForEach(k.indices, id: \.self) { i in
-                                    EntityRow(
-                                        index: i,
-                                        entity: entities[i],
-                                        isSelected: selection.contains(.entity(i)),
-                                        isFocused: focus == .entity(i),
-                                        onTap: { focus = .entity(i); toggle(.entity(i)) }
-                                    )
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: 1) {
+                    ForEach(filtered, id: \.name) { l in
+                        LayerRow(
+                            info: l,
+                            isSelected: selection.contains(.layer(l.name)),
+                            isFocused: focus == .layer(l.name),
+                            isExpanded: expandedLayers.contains(l.name),
+                            onTap: { focus = .layer(l.name); toggle(.layer(l.name)) },
+                            onDisclose: { toggleExpand(layer: l.name) }
+                        )
+                        .id(DXFFocus.layer(l.name))
+                        if expandedLayers.contains(l.name) {
+                            // Composite id — "line" repeats across layers, so id: \.name
+                            // collides at LazyVStack level and dup rows render empty.
+                            let kindItems = l.kinds.map { (id: kindKey(l.name, $0.name), kind: $0) }
+                            ForEach(kindItems, id: \.id) { item in
+                                let k = item.kind
+                                KindRow(
+                                    layerName: l.name,
+                                    kind: k,
+                                    isSelected: selection.contains(.kind(layer: l.name, kind: k.name)),
+                                    isFocused: focus == .kind(layer: l.name, kind: k.name),
+                                    isExpanded: expandedKinds.contains(kindKey(l.name, k.name)),
+                                    onTap: { focus = .kind(layer: l.name, kind: k.name); toggle(.kind(layer: l.name, kind: k.name)) },
+                                    onDisclose: { toggleExpand(kindOn: l.name, kind: k.name) }
+                                )
+                                .id(DXFFocus.kind(layer: l.name, kind: k.name))
+                                if expandedKinds.contains(kindKey(l.name, k.name)) {
+                                    ForEach(k.indices, id: \.self) { i in
+                                        EntityRow(
+                                            index: i,
+                                            entity: entities[i],
+                                            isSelected: selection.contains(.entity(i)),
+                                            isFocused: focus == .entity(i),
+                                            onTap: { focus = .entity(i); toggle(.entity(i)) }
+                                        )
+                                        .id(DXFFocus.entity(i))
+                                    }
                                 }
                             }
                         }
                     }
+                    if filtered.isEmpty {
+                        Text("No matches for “\(search)”")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 18)
+                    }
                 }
-                if filtered.isEmpty {
-                    Text("No matches for “\(search)”")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 18)
-                }
+                .padding(.horizontal, 6)
+                .padding(.bottom, 8)
             }
-            .padding(.horizontal, 6)
-            .padding(.bottom, 8)
+            .frame(maxHeight: .infinity)
+            .scrollIndicators(.hidden)
+            .onChange(of: focus) { _, new in
+                guard let new else { return }
+                withAnimation(.smooth(duration: 0.15)) { proxy.scrollTo(new) }
+            }
         }
-        .frame(maxHeight: .infinity)
-        .scrollIndicators(.hidden)
     }
 
     @ViewBuilder private var footer: some View {

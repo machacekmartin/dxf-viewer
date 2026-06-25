@@ -6,6 +6,12 @@ All notable changes to DXF Viewer are documented here. Format follows
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-06-25
+
+### Fixed
+- Arrow-key navigation in the layer panel now scrolls the panel so the
+  focused row stays visible.
+
 ## [1.1.1] - 2026-06-25
 
 ### Fixed
