@@ -9,6 +9,23 @@
     <language>en</language>
 
     <item>
+      <title>Version 1.1.2</title>
+      <pubDate>Thu, 25 Jun 2026 12:40:00 +0000</pubDate>
+      <sparkle:version>6</sparkle:version>
+      <sparkle:shortVersionString>1.1.2</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[
+        <h2>1.1.2 — keyboard nav scrolls layer panel</h2>
+        <p>Arrow-key navigation in the layer panel now keeps the focused row visible.</p>
+      ]]></description>
+      <enclosure
+        url="https://github.com/machacekmartin/dxf-viewer/releases/download/v1.1.2/DXFViewer-1.1.2.dmg"
+        sparkle:edSignature="G+eGN9+RnZ9wO+qAPLLLyPVX4Bp6FDXE3HVS/NgmWvw1vFrVAhB5WXZSPkdw9QA13EPf5k/vigq5GkTd2DwmBg=="
+        length="2718799"
+        type="application/octet-stream" />
+    </item>
+
+    <item>
       <title>Version 1.1.1</title>
       <pubDate>Thu, 25 Jun 2026 12:15:00 +0000</pubDate>
       <sparkle:version>5</sparkle:version>
