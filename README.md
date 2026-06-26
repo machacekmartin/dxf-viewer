@@ -17,9 +17,8 @@
 
 ## First launch on macOS
 
-DXF Viewer is ad-hoc signed (no paid Apple Developer cert), so on the first
-launch macOS Gatekeeper shows *"cannot be opened — unverified developer"*.
-To allow it:
+On the first launch macOS Gatekeeper shows *"cannot be opened — unverified
+developer"*. To allow it:
 
 1. Open **System Settings → Privacy & Security**.
 2. Scroll to the bottom and click **Open Anyway** next to *DXF Viewer*.
