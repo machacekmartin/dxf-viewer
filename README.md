@@ -15,6 +15,18 @@
 
 [**Get it on Gumroad**](https://machacekmartin.gumroad.com/l/dxf-viewer-macos) · [Free on GitHub Releases](https://github.com/machacekmartin/dxf-viewer/releases/latest) · [Website](https://machacekmartin.github.io/dxf-viewer/)
 
+## First launch on macOS
+
+DXF Viewer is ad-hoc signed (no paid Apple Developer cert), so on the first
+launch macOS Gatekeeper shows *"cannot be opened — unverified developer"*.
+To allow it:
+
+1. Open **System Settings → Privacy & Security**.
+2. Scroll to the bottom and click **Open Anyway** next to *DXF Viewer*.
+3. Confirm in the prompt that follows.
+
+macOS remembers your choice — you only do this once per machine.
+
 ## Build
 
 ```sh
