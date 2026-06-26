@@ -73,6 +73,15 @@ struct ContentView: View {
             coordinator.pendingOpen = nil
             Task { await load(url: url) }
         }
+        .onChange(of: selection) { _, new in
+            guard let rect = selectionBounds(in: new), !new.isEmpty else { return }
+            // Panel is 296pt wide (LayerPanel.swift). Tell focus to center the
+            // selection in the unoccluded strip so it doesn't slide behind it.
+            NotificationCenter.default.post(name: .dxfFocusBounds, object: nil, userInfo: [
+                "rect": rect,
+                "rightInset": panelOpen ? CGFloat(296) : CGFloat(0),
+            ])
+        }
         .alert("Couldn't open file", isPresented: $showErrorAlert, presenting: error) { _ in
             Button("OK", role: .cancel) {}
         } message: { msg in
@@ -150,6 +159,32 @@ struct ContentView: View {
             self.showErrorAlert = true
         }
         isLoading = false
+    }
+
+    // Union bbox of every entity referenced by `sel` (layers expand to all their
+    // kinds; kinds expand to their indices). nil if no document or no entities matched.
+    private func selectionBounds(in sel: Set<DXFSelector>) -> CGRect? {
+        guard let doc = document, !sel.isEmpty else { return nil }
+        var indices = Set<Int>()
+        for s in sel {
+            switch s {
+            case .layer(let n):
+                if let l = doc.layers.first(where: { $0.name == n }) {
+                    for k in l.kinds { indices.formUnion(k.indices) }
+                }
+            case .kind(let ln, let kn):
+                if let l = doc.layers.first(where: { $0.name == ln }),
+                   let k = l.kinds.first(where: { $0.name == kn }) {
+                    indices.formUnion(k.indices)
+                }
+            case .entity(let i):
+                indices.insert(i)
+            }
+        }
+        guard !indices.isEmpty else { return nil }
+        let ents = indices.compactMap { doc.entities.indices.contains($0) ? doc.entities[$0] : nil }
+        let r = computeBounds(ents)
+        return r.width > 0 && r.height > 0 ? r : nil
     }
 
     private func handleDrop(_ providers: [NSItemProvider]) -> Bool {

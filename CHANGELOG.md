@@ -6,6 +6,15 @@ All notable changes to DXF Viewer are documented here. Format follows
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-06-26
+
+### Added
+- Selecting a layer (or kind, or entity) in the layer panel now zooms
+  and pans the canvas to frame it. Multi-select via ⌘-click reframes
+  to the union of every selected item. The focus area accounts for the
+  layer panel's width so the selection lands in the visible strip, not
+  behind the panel.
+
 ## [1.1.2] - 2026-06-25
 
 ### Fixed

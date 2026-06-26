@@ -8,6 +8,10 @@ final class ViewState: ObservableObject {
     // Set by DXFCanvas .onContinuousHover. Gates the scroll-wheel monitor so the
     // LayerPanel's ScrollView gets its own scroll events instead of being eaten here.
     var hovered = false
+    // Mirrored from DXFCanvas each layout so focus(on:) can compute fit/center
+    // without the GeometryReader.
+    var lastSize: CGSize = .zero
+    var docBounds: CGRect = .zero
     private var monitor: Any?
     private var observers: [NSObjectProtocol] = []
 
@@ -51,6 +55,34 @@ final class ViewState: ObservableObject {
         animate(to: absoluteScale, targetOffset: target)
     }
 
+    // Zoom + pan so `target` (world rect) sits at the center of the *visible*
+    // viewport (canvas minus rightInset for the layer panel) and fills ~65%
+    // of it. Matches the body's `fit = min((size-40)/b.w, (size-40)/b.h)` for
+    // the state.scale=1 baseline, then offsets the result so screen center
+    // lands in the unobscured area instead of behind the panel.
+    func focus(on target: CGRect, rightInset: CGFloat = 0) {
+        let size = lastSize, b = docBounds
+        guard size.width > 0, size.height > 0, b.width > 0, b.height > 0 else { return }
+        let visibleW = max(size.width - rightInset, 1)
+        let visibleH = size.height
+        let fit = min((size.width - 40) / b.width, (size.height - 40) / b.height)
+        guard fit > 0 else { return }
+        let tw = max(target.width, 1), th = max(target.height, 1)
+        let fillRatio: CGFloat = 0.65
+        let sTarget = min(visibleW * fillRatio / tw, visibleH * fillRatio / th)
+        // 20× cap keeps tiny single-entity picks from blasting to the global 1000× ceiling.
+        let stateScale = max(0.01, min(20, sTarget / fit))
+        let s = fit * stateScale
+        // Visible-area center in canvas coords. cx = size.w/2 + offset.w, so
+        // offset.w = (where we want target's center to land on screen) - size.w/2
+        //           - (target.midX - b.midX) * s.
+        let visCenterX = (size.width - rightInset) / 2
+        let visCenterY = size.height / 2
+        let off = CGSize(width: visCenterX - size.width / 2 - (target.midX - b.midX) * s,
+                         height: visCenterY - size.height / 2 + (target.midY - b.midY) * s)
+        animate(to: stateScale, targetOffset: off, duration: 0.45)
+    }
+
     init() {
         monitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel, .magnify]) { [weak self] event in
             // Pass through when cursor isn't over the canvas, so LayerPanel's ScrollView
@@ -79,6 +111,11 @@ final class ViewState: ObservableObject {
         })
         observers.append(NotificationCenter.default.addObserver(forName: .dxfFit, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.animate(to: 1, targetOffset: .zero) }
+        })
+        observers.append(NotificationCenter.default.addObserver(forName: .dxfFocusBounds, object: nil, queue: .main) { [weak self] note in
+            guard let rect = note.userInfo?["rect"] as? CGRect else { return }
+            let rightInset = (note.userInfo?["rightInset"] as? CGFloat) ?? 0
+            MainActor.assumeIsolated { self?.focus(on: rect, rightInset: rightInset) }
         })
     }
 
@@ -137,6 +174,9 @@ struct DXFCanvas: View {
             .onContinuousHover { phase in
                 if case .active = phase { state.hovered = true } else { state.hovered = false }
             }
+            .onAppear { state.lastSize = geo.size; state.docBounds = bounds }
+            .onChange(of: geo.size) { _, new in state.lastSize = new }
+            .onChange(of: bounds) { _, new in state.docBounds = new }
             .overlay(alignment: .bottomLeading) {
                 controlBar(geo: geo)
             }

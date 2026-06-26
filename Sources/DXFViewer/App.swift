@@ -8,6 +8,7 @@ extension Notification.Name {
     static let dxfZoomIn  = Notification.Name("com.machacekmartin.dxfviewer.zoomIn")
     static let dxfZoomOut = Notification.Name("com.machacekmartin.dxfviewer.zoomOut")
     static let dxfFit     = Notification.Name("com.machacekmartin.dxfviewer.fit")
+    static let dxfFocusBounds = Notification.Name("com.machacekmartin.dxfviewer.focusBounds")
 }
 
 // MARK: - CLI fingerprint helpers (used by tools/validate.py)
