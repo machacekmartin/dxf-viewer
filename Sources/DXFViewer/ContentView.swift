@@ -1,6 +1,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 import AppKit
+import DXFViewerCore
 
 struct ContentView: View {
     @EnvironmentObject private var coordinator: OpenCoordinator

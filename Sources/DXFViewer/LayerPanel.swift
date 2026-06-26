@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import DXFViewerCore
 
 enum DXFSelector: Hashable {
     case layer(String)
@@ -52,6 +53,11 @@ func entityDescription(_ e: DXFEntity) -> String {
         return "r \(fmtCoord(r)), \(fmtCoord(sa))° → \(fmtCoord(ea))°"
     case .polyline(let pts, let closed):
         return "\(pts.count) pts\(closed ? " · closed" : "")"
+    case .widePolyline(let verts, let closed):
+        let maxW = verts.map { max($0.startWidth, $0.endWidth) }.max() ?? 0
+        return "\(verts.count) pts · width \(fmtCoord(maxW))\(closed ? " · closed" : "")"
+    case .solid(let pts):
+        return "\(pts.count) corners"
     case .text(_, let s, _, _, _, _, _, _):
         let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
         return t.isEmpty ? "(empty)" : "“\(t)”"

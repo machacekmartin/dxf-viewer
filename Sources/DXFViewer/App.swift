@@ -1,6 +1,7 @@
 import SwiftUI
 import Foundation
 import AppKit
+import DXFViewerCore
 
 // MARK: - Notifications driven by menu commands
 
@@ -56,6 +57,8 @@ func dxfKindUppercase(_ k: DXFEntity.Kind) -> String {
     case .circle: return "CIRCLE"
     case .arc: return "ARC"
     case .polyline: return "POLYLINE"
+    case .widePolyline: return "POLYLINE"
+    case .solid: return "SOLID"
     case .text: return "TEXT"
     case .ellipse: return "ELLIPSE"
     case .spline: return "SPLINE"

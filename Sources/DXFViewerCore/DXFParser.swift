@@ -5,7 +5,7 @@ import CoreGraphics
 // points across the valid parameter range [U_p, U_{n+1}]. If the DXF gave us no knot
 // vector (or a malformed one), we synthesize a uniform clamped knot vector — that's
 // the standard "open uniform" interpretation that matches AutoCAD.
-func tessellateSpline(controlPoints: [CGPoint], knots: [Double], degree: Int, samples: Int = 100) -> [CGPoint] {
+public func tessellateSpline(controlPoints: [CGPoint], knots: [Double], degree: Int, samples: Int = 100) -> [CGPoint] {
     guard controlPoints.count > degree, degree >= 1 else { return controlPoints }
     let n = controlPoints.count - 1
     let p = degree
@@ -83,7 +83,7 @@ private func sniffDXFEncoding(_ data: Data) -> String.Encoding? {
 // SPLINE (control points + knots), INSERT/BLOCK (expanded), DIMENSION (via its anonymous block),
 // HATCH (outline only), LEADER. Skipped: SOLID/3DFACE, OCS extrusion (assumes +Z),
 // linetype/lineweight (continuous + 1pt).
-func parseDXF(url: URL) throws -> DXFDocument {
+public func parseDXF(url: URL) throws -> DXFDocument {
     let data = try Data(contentsOf: url)
     let text: String
     // $DWGCODEPAGE is authoritative when present. Many R12 exports declare ANSI_1250
@@ -151,6 +151,8 @@ private struct ParserState {
     var section: Section = .none
 
     var layerColor: [String: Int] = [:]
+    // Per-layer lineweight in hundredths of mm. Missing layer → dxfDefaultLineWeight.
+    var layerLineWeight: [String: Int] = [:]
     var frozenLayers: Set<String> = []
 
     var blocks: [String: (entities: [DXFEntity], base: CGPoint)] = [:]
@@ -167,12 +169,19 @@ private struct ParserState {
     var inPoly = false
     var polyLayer = ""
     var polyAci = 256
+    var polyLW = -1 // DXF code 370 raw on POLYLINE header; -1 = ByLayer
+    var polyDefStartW: CGFloat = 0 // POLYLINE header default start width (40)
+    var polyDefEndW: CGFloat = 0   // POLYLINE header default end width (41)
     var polyVerts: [CGPoint] = []
+    var polyVertWidths: [(start: CGFloat, end: CGFloat)] = [] // parallel to polyVerts
     var polyClosed = false
-    var pendingVertex: (x: CGFloat?, y: CGFloat?) = (nil, nil)
+    var pendingVertex: (x: CGFloat?, y: CGFloat?, sw: CGFloat?, ew: CGFloat?) = (nil, nil, nil, nil)
 
-    var lwVerts: [(CGPoint, CGFloat)] = []
-    var lwLastVertex: (x: CGFloat?, y: CGFloat?, bulge: CGFloat) = (nil, nil, 0)
+    // LWPOLYLINE per-vertex bag: point, bulge, startWidth, endWidth.
+    // Negative width = "use code 43 fallback" (sentinel; replaced at finalize).
+    var lwVerts: [(CGPoint, bulge: CGFloat, sw: CGFloat, ew: CGFloat)] = []
+    var lwLastVertex: (x: CGFloat?, y: CGFloat?, bulge: CGFloat, sw: CGFloat, ew: CGFloat) = (nil, nil, 0, -1, -1)
+    var lwConstWidth: CGFloat = 0 // code 43
 
     var splinePts: [CGPoint] = []
     var splineLastX: CGFloat? = nil
@@ -201,20 +210,33 @@ private struct ParserState {
         return entityAci
     }
 
+    // Resolve DXF code 370 to a concrete hundredths-of-mm value.
+    // -1 (ByLayer) → layer's weight (or default). -2 (ByBlock) → default (we don't propagate
+    // INSERT lineweight). -3 (default) → default. 0…211 → as-is.
+    func resolveLineWeight(layer: String, raw: Int) -> Int {
+        if raw == -1 { return layerLineWeight[layer] ?? dxfDefaultLineWeight }
+        if raw < 0 { return dxfDefaultLineWeight }
+        return max(0, min(211, raw))
+    }
+
     mutating func appendEntity(_ e: DXFEntity) {
         if inBlock { blockEntities.append(e) } else { rawEntities.append(e) }
     }
     mutating func commitVertex() {
         if let x = pendingVertex.x, let y = pendingVertex.y {
             polyVerts.append(CGPoint(x: x, y: y))
+            // Per-vertex override or fall back to header defaults.
+            let sw = pendingVertex.sw ?? polyDefStartW
+            let ew = pendingVertex.ew ?? polyDefEndW
+            polyVertWidths.append((start: sw, end: ew))
         }
-        pendingVertex = (nil, nil)
+        pendingVertex = (nil, nil, nil, nil)
     }
     mutating func commitLWVertex() {
         if let x = lwLastVertex.x, let y = lwLastVertex.y {
-            lwVerts.append((CGPoint(x: x, y: y), lwLastVertex.bulge))
+            lwVerts.append((CGPoint(x: x, y: y), lwLastVertex.bulge, lwLastVertex.sw, lwLastVertex.ew))
         }
-        lwLastVertex = (nil, nil, 0)
+        lwLastVertex = (nil, nil, 0, -1, -1)
     }
     mutating func flushHatchPath() {
         if !hatchCurrent.isEmpty {
@@ -234,9 +256,10 @@ private struct ParserState {
     }
     mutating func reset() {
         current = nil; attrs = [:]
-        polyVerts = []; polyClosed = false; polyLayer = ""; polyAci = 256
-        pendingVertex = (nil, nil)
-        lwVerts = []; lwLastVertex = (nil, nil, 0)
+        polyVerts = []; polyVertWidths = []; polyClosed = false; polyLayer = ""; polyAci = 256; polyLW = -1
+        polyDefStartW = 0; polyDefEndW = 0
+        pendingVertex = (nil, nil, nil, nil)
+        lwVerts = []; lwLastVertex = (nil, nil, 0, -1, -1); lwConstWidth = 0
         splinePts = []; splineLastX = nil
         splineKnots = []; splineDegree = 3; splineFlags = 0
         hatchPaths = []; hatchCurrent = []; hatchPendingX = nil
@@ -254,6 +277,8 @@ private struct ParserState {
                 if let name = attrs[2] {
                     let aci = intVal(62, 7)
                     layerColor[name] = abs(aci)
+                    let lw = intVal(370, -1)
+                    layerLineWeight[name] = (lw < 0) ? dxfDefaultLineWeight : max(0, min(211, lw))
                     if (intVal(70) & 1) != 0 || aci < 0 { frozenLayers.insert(name) }
                 }
                 inLayer = false; attrs = [:]
@@ -264,7 +289,25 @@ private struct ParserState {
                     commitVertex()
                     if !polyVerts.isEmpty && !frozenLayers.contains(polyLayer) {
                         let aci = resolveAci(layer: polyLayer, entityAci: polyAci)
-                        appendEntity(DXFEntity(kind: .polyline(polyVerts, polyClosed), aci: aci, layer: polyLayer))
+                        let lw = resolveLineWeight(layer: polyLayer, raw: polyLW)
+                        let hasWidth = polyVertWidths.contains { $0.start > 0 || $0.end > 0 }
+                        if hasWidth {
+                            var verts: [WidePolylineVertex] = []
+                            verts.reserveCapacity(polyVerts.count)
+                            for i in polyVerts.indices {
+                                let w = polyVertWidths[i]
+                                // POLYLINE per-vertex spec: width 40/41 on a VERTEX defines the
+                                // segment that STARTS at this vertex. So startWidth = vertex.start,
+                                // endWidth = next vertex's "start" — but DXF stores BOTH endpoints
+                                // per vertex (40 = leaving, 41 = arriving). Use vertex.start for
+                                // outgoing edge.
+                                verts.append(WidePolylineVertex(point: polyVerts[i], bulge: 0,
+                                                                startWidth: w.start, endWidth: w.end))
+                            }
+                            appendEntity(DXFEntity(kind: .widePolyline(verts, polyClosed), aci: aci, layer: polyLayer, lineWeight: lw))
+                        } else {
+                            appendEntity(DXFEntity(kind: .polyline(polyVerts, polyClosed), aci: aci, layer: polyLayer, lineWeight: lw))
+                        }
                     }
                     inPoly = false; reset()
                     if value == "SEQEND" { return false }
@@ -323,17 +366,25 @@ private struct ParserState {
             if code == 70 { polyClosed = (Int(value) ?? 0) & 1 == 1 }
             else if code == 8 { polyLayer = value }
             else if code == 62 { polyAci = Int(value) ?? 256 }
+            else if code == 370 { polyLW = Int(value) ?? -1 }
+            else if code == 40 { polyDefStartW = CGFloat(Double(value) ?? 0) }
+            else if code == 41 { polyDefEndW = CGFloat(Double(value) ?? 0) }
             return false
         }
         if inPoly {
             if code == 10 { pendingVertex.x = CGFloat(Double(value) ?? 0) }
             else if code == 20 { pendingVertex.y = CGFloat(Double(value) ?? 0) }
+            else if code == 40 { pendingVertex.sw = CGFloat(Double(value) ?? 0) }
+            else if code == 41 { pendingVertex.ew = CGFloat(Double(value) ?? 0) }
             return false
         }
         if current == "LWPOLYLINE" {
             if code == 10 { commitLWVertex(); lwLastVertex.x = CGFloat(Double(value) ?? 0) }
             else if code == 20 { lwLastVertex.y = CGFloat(Double(value) ?? 0) }
             else if code == 42 { lwLastVertex.bulge = CGFloat(Double(value) ?? 0) }
+            else if code == 40 { lwLastVertex.sw = CGFloat(Double(value) ?? 0) }
+            else if code == 41 { lwLastVertex.ew = CGFloat(Double(value) ?? 0) }
+            else if code == 43 { lwConstWidth = CGFloat(Double(value) ?? 0) }
             else { attrs[code] = value }
             return false
         }
@@ -429,6 +480,8 @@ private struct ParserState {
         if inLayer, let name = attrs[2] {
             let aci = intVal(62, 7)
             layerColor[name] = abs(aci)
+            let lw = intVal(370, -1)
+            layerLineWeight[name] = (lw < 0) ? dxfDefaultLineWeight : max(0, min(211, lw))
             if (intVal(70) & 1) != 0 || aci < 0 { frozenLayers.insert(name) }
         } else if let c = current { emit(c) }
     }
@@ -441,34 +494,72 @@ private struct ParserState {
             return
         }
         let aci = resolveAci(layer: layer, entityAci: intVal(62, 256))
+        let lw = resolveLineWeight(layer: layer, raw: intVal(370, -1))
+        let thk = num(39, 0)
         switch name {
         case "LINE":
-            appendEntity(DXFEntity(kind: .line(CGPoint(x: num(10), y: num(20)), CGPoint(x: num(11), y: num(21))), aci: aci, layer: layer))
+            appendEntity(DXFEntity(kind: .line(CGPoint(x: num(10), y: num(20)), CGPoint(x: num(11), y: num(21))), aci: aci, layer: layer, lineWeight: lw, thickness: thk))
         case "POINT":
-            appendEntity(DXFEntity(kind: .point(CGPoint(x: num(10), y: num(20))), aci: aci, layer: layer))
+            appendEntity(DXFEntity(kind: .point(CGPoint(x: num(10), y: num(20))), aci: aci, layer: layer, lineWeight: lw, thickness: thk))
         case "CIRCLE":
-            appendEntity(DXFEntity(kind: .circle(CGPoint(x: num(10), y: num(20)), num(40)), aci: aci, layer: layer))
+            appendEntity(DXFEntity(kind: .circle(CGPoint(x: num(10), y: num(20)), num(40)), aci: aci, layer: layer, lineWeight: lw, thickness: thk))
         case "ARC":
-            appendEntity(DXFEntity(kind: .arc(CGPoint(x: num(10), y: num(20)), num(40), num(50), num(51)), aci: aci, layer: layer))
+            appendEntity(DXFEntity(kind: .arc(CGPoint(x: num(10), y: num(20)), num(40), num(50), num(51)), aci: aci, layer: layer, lineWeight: lw, thickness: thk))
         case "ELLIPSE":
             let c = CGPoint(x: num(10), y: num(20))
             let mv = CGPoint(x: num(11), y: num(21))
-            appendEntity(DXFEntity(kind: .ellipse(c, mv, num(40, 1), num(41, 0), num(42, 2 * .pi)), aci: aci, layer: layer))
+            appendEntity(DXFEntity(kind: .ellipse(c, mv, num(40, 1), num(41, 0), num(42, 2 * .pi)), aci: aci, layer: layer, lineWeight: lw, thickness: thk))
+        case "SOLID", "TRACE", "3DFACE":
+            // 10/20, 11/21, 12/22 mandatory; 13/23 optional (= 12/22 → triangle).
+            // SOLID's wire order is TL, TR, BL, BR (Z-style) — reorder so we trace
+            // a convex outline TL → TR → BR → BL when the 4th point exists.
+            let p0 = CGPoint(x: num(10), y: num(20))
+            let p1 = CGPoint(x: num(11), y: num(21))
+            let p2 = CGPoint(x: num(12), y: num(22))
+            let has13 = attrs[13] != nil
+            if has13 {
+                let p3 = CGPoint(x: num(13), y: num(23))
+                if abs(p3.x - p2.x) < 1e-9 && abs(p3.y - p2.y) < 1e-9 {
+                    appendEntity(DXFEntity(kind: .solid([p0, p1, p2]), aci: aci, layer: layer, lineWeight: lw, thickness: thk))
+                } else {
+                    // Quad: AutoCAD's Z-order is TL=p0, TR=p1, BL=p2, BR=p3 → outline TL→TR→BR→BL.
+                    appendEntity(DXFEntity(kind: .solid([p0, p1, p3, p2]), aci: aci, layer: layer, lineWeight: lw, thickness: thk))
+                }
+            } else {
+                appendEntity(DXFEntity(kind: .solid([p0, p1, p2]), aci: aci, layer: layer, lineWeight: lw, thickness: thk))
+            }
         case "LWPOLYLINE":
             commitLWVertex()
             guard !lwVerts.isEmpty else { return }
             let closed = (intVal(70) & 1) == 1
-            var pts: [CGPoint] = [lwVerts[0].0]
-            for i in 0..<lwVerts.count - 1 {
-                let a = lwVerts[i]
-                let b = lwVerts[i + 1]
-                if abs(a.1) > 1e-9 { pts.append(contentsOf: tessellateBulge(a.0, b.0, bulge: a.1)) }
-                pts.append(b.0)
+            // Resolve per-vertex widths: -1 sentinel falls back to constant (43) then 0.
+            func vertW(_ raw: CGFloat) -> CGFloat { raw < 0 ? lwConstWidth : raw }
+            let hasWidth = (lwConstWidth > 0) || lwVerts.contains { $0.sw >= 0 && $0.sw > 0 } || lwVerts.contains { $0.ew >= 0 && $0.ew > 0 }
+
+            if hasWidth {
+                // Build wide-polyline vertices. Bulges interpolated linearly across the
+                // tessellated arc samples in the renderer (we keep the original control points here).
+                var verts: [WidePolylineVertex] = []
+                verts.reserveCapacity(lwVerts.count)
+                for v in lwVerts {
+                    verts.append(WidePolylineVertex(point: v.0, bulge: v.bulge,
+                                                    startWidth: vertW(v.sw),
+                                                    endWidth: vertW(v.ew)))
+                }
+                appendEntity(DXFEntity(kind: .widePolyline(verts, closed), aci: aci, layer: layer, lineWeight: lw, thickness: thk))
+            } else {
+                var pts: [CGPoint] = [lwVerts[0].0]
+                for i in 0..<lwVerts.count - 1 {
+                    let a = lwVerts[i]
+                    let b = lwVerts[i + 1]
+                    if abs(a.bulge) > 1e-9 { pts.append(contentsOf: tessellateBulge(a.0, b.0, bulge: a.bulge)) }
+                    pts.append(b.0)
+                }
+                if closed, let last = lwVerts.last, abs(last.bulge) > 1e-9 {
+                    pts.append(contentsOf: tessellateBulge(last.0, lwVerts[0].0, bulge: last.bulge))
+                }
+                appendEntity(DXFEntity(kind: .polyline(pts, closed), aci: aci, layer: layer, lineWeight: lw, thickness: thk))
             }
-            if closed, let last = lwVerts.last, abs(last.1) > 1e-9 {
-                pts.append(contentsOf: tessellateBulge(last.0, lwVerts[0].0, bulge: last.1))
-            }
-            appendEntity(DXFEntity(kind: .polyline(pts, closed), aci: aci, layer: layer))
         case "TEXT":
             guard let raw = attrs[1], !raw.isEmpty else { return }
             let s = stripDxfEscapes(raw)
@@ -487,7 +578,7 @@ private struct ParserState {
             // g72=4 (Middle) means the alignment point is the geometric centre of the
             // glyph box — vertically as well as horizontally.
             let vAlign = (g72 == 4) ? 2 : g73
-            appendEntity(DXFEntity(kind: .text(pos, s, h, num(50), hAlign, vAlign, 0, 1.0), aci: aci, layer: layer))
+            appendEntity(DXFEntity(kind: .text(pos, s, h, num(50), hAlign, vAlign, 0, 1.0), aci: aci, layer: layer, lineWeight: lw, thickness: thk))
         case "MTEXT":
             guard let raw = attrs[1], !raw.isEmpty else { return }
             let s = stripMText(raw)
@@ -519,7 +610,7 @@ private struct ParserState {
                     rot = atan2(dy, dx) * 180 / .pi
                 }
             }
-            appendEntity(DXFEntity(kind: .text(CGPoint(x: num(10), y: num(20)), s, h, rot, hAlign, vAlign, wrapW, lineSp), aci: aci, layer: layer))
+            appendEntity(DXFEntity(kind: .text(CGPoint(x: num(10), y: num(20)), s, h, rot, hAlign, vAlign, wrapW, lineSp), aci: aci, layer: layer, lineWeight: lw, thickness: thk))
         case "INSERT":
             let bn = attrs[2] ?? ""
             var px = num(10), py = num(20)
@@ -529,16 +620,16 @@ private struct ParserState {
             // first, then rotation, so equivalent composition needs the rotation negated.
             let extrZ = num(230, 1)
             if extrZ < 0 { px = -px; sx = -sx; rotDeg = -rotDeg }
-            appendEntity(DXFEntity(kind: .insert(DXFInsert(blockName: bn, pos: CGPoint(x: px, y: py), sx: sx, sy: sy, rotDeg: rotDeg, isDim: false)), aci: aci, layer: layer))
+            appendEntity(DXFEntity(kind: .insert(DXFInsert(blockName: bn, pos: CGPoint(x: px, y: py), sx: sx, sy: sy, rotDeg: rotDeg, isDim: false)), aci: aci, layer: layer, lineWeight: lw, thickness: thk))
         case "DIMENSION":
             let bn = attrs[2] ?? ""
             if !bn.isEmpty {
-                appendEntity(DXFEntity(kind: .insert(DXFInsert(blockName: bn, pos: .zero, sx: 1, sy: 1, rotDeg: 0, isDim: true)), aci: aci, layer: layer))
+                appendEntity(DXFEntity(kind: .insert(DXFInsert(blockName: bn, pos: .zero, sx: 1, sy: 1, rotDeg: 0, isDim: true)), aci: aci, layer: layer, lineWeight: lw, thickness: thk))
             }
         case "SPLINE":
             if !splinePts.isEmpty {
                 let closed = (splineFlags & 1) != 0
-                appendEntity(DXFEntity(kind: .spline(splinePts, max(splineDegree, 1), splineKnots, closed), aci: aci, layer: layer))
+                appendEntity(DXFEntity(kind: .spline(splinePts, max(splineDegree, 1), splineKnots, closed), aci: aci, layer: layer, lineWeight: lw, thickness: thk))
             }
         case "HATCH":
             flushHatchPath()
@@ -567,7 +658,7 @@ private struct ParserState {
                 pattern: scaled,
                 patternScale: hatchScale,
                 patternAngle: hatchEntityAngle)
-            appendEntity(DXFEntity(kind: .hatch(data), aci: aci, layer: layer))
+            appendEntity(DXFEntity(kind: .hatch(data), aci: aci, layer: layer, lineWeight: lw, thickness: thk))
         case "LEADER":
             commitLWVertex()
             guard !lwVerts.isEmpty else { return }
@@ -582,7 +673,7 @@ private struct ParserState {
                 }
                 return num(40, 1)
             }()
-            appendEntity(DXFEntity(kind: .leader(pts, arrow), aci: aci, layer: layer))
+            appendEntity(DXFEntity(kind: .leader(pts, arrow), aci: aci, layer: layer, lineWeight: lw, thickness: thk))
         default: break
         }
     }
@@ -590,7 +681,7 @@ private struct ParserState {
 
 // MARK: - Helpers
 
-private func tessellateBulge(_ a: CGPoint, _ b: CGPoint, bulge: CGFloat, steps: Int = 12) -> [CGPoint] {
+public func tessellateBulge(_ a: CGPoint, _ b: CGPoint, bulge: CGFloat, steps: Int = 12) -> [CGPoint] {
     let theta = 4 * atan(bulge)
     let chord = hypot(b.x - a.x, b.y - a.y)
     guard chord > 0, abs(theta) > 1e-9 else { return [] }
@@ -692,15 +783,17 @@ private func expandInserts(_ entities: [DXFEntity], blocks: [String: (entities: 
             let aci = be.aci
             // Standard DXF rule: entities on layer "0" inside a block adopt the insert's layer.
             let layer = (be.layer == "0") ? e.layer : be.layer
+            let lw = be.lineWeight
+            let thk = be.thickness * scaleAbs
             if layer.caseInsensitiveCompare("defpoints") == .orderedSame { continue }
             switch be.kind {
             case .line(let a, let b):
-                emit(DXFEntity(kind: .line(tx(a), tx(b)), aci: aci, layer: layer))
+                emit(DXFEntity(kind: .line(tx(a), tx(b)), aci: aci, layer: layer, lineWeight: lw, thickness: thk))
             case .point(let p):
-                emit(DXFEntity(kind: .point(tx(p)), aci: aci, layer: layer))
+                emit(DXFEntity(kind: .point(tx(p)), aci: aci, layer: layer, lineWeight: lw, thickness: thk))
             case .circle(let c, let r):
                 if abs(abs(ins.sx) - abs(ins.sy)) < 1e-9 {
-                    emit(DXFEntity(kind: .circle(tx(c), r * scaleAbs), aci: aci, layer: layer))
+                    emit(DXFEntity(kind: .circle(tx(c), r * scaleAbs), aci: aci, layer: layer, lineWeight: lw, thickness: thk))
                 } else {
                     let asx = abs(ins.sx), asy = abs(ins.sy)
                     let rMajor = r * max(asx, asy)
@@ -708,7 +801,7 @@ private func expandInserts(_ entities: [DXFEntity], blocks: [String: (entities: 
                     let majorWorld: CGPoint = (asx >= asy)
                         ? CGPoint(x: rMajor * cosR, y: rMajor * sinR)
                         : CGPoint(x: -rMajor * sinR, y: rMajor * cosR)
-                    emit(DXFEntity(kind: .ellipse(tx(c), majorWorld, ratio, 0, 2 * .pi), aci: aci, layer: layer))
+                    emit(DXFEntity(kind: .ellipse(tx(c), majorWorld, ratio, 0, 2 * .pi), aci: aci, layer: layer, lineWeight: lw, thickness: thk))
                 }
             case .arc(let c, let r, let sa, let ea):
                 let mx = ins.sx < 0, my = ins.sy < 0
@@ -716,17 +809,27 @@ private func expandInserts(_ entities: [DXFEntity], blocks: [String: (entities: 
                 if mx && my { nsa = sa + 180; nea = ea + 180 }
                 else if mx { nsa = 180 - ea; nea = 180 - sa }
                 else if my { nsa = -ea; nea = -sa }
-                emit(DXFEntity(kind: .arc(tx(c), r * scaleAbs, nsa + ins.rotDeg, nea + ins.rotDeg), aci: aci, layer: layer))
+                emit(DXFEntity(kind: .arc(tx(c), r * scaleAbs, nsa + ins.rotDeg, nea + ins.rotDeg), aci: aci, layer: layer, lineWeight: lw, thickness: thk))
             case .polyline(let pts, let closed):
-                emit(DXFEntity(kind: .polyline(pts.map(tx), closed), aci: aci, layer: layer))
+                emit(DXFEntity(kind: .polyline(pts.map(tx), closed), aci: aci, layer: layer, lineWeight: lw, thickness: thk))
+            case .solid(let pts):
+                emit(DXFEntity(kind: .solid(pts.map(tx)), aci: aci, layer: layer, lineWeight: lw, thickness: thk))
+            case .widePolyline(let verts, let closed):
+                // Widths are world-units; scale with INSERT to keep proportions.
+                let mapped = verts.map {
+                    WidePolylineVertex(point: tx($0.point), bulge: $0.bulge,
+                                       startWidth: $0.startWidth * scaleAbs,
+                                       endWidth: $0.endWidth * scaleAbs)
+                }
+                emit(DXFEntity(kind: .widePolyline(mapped, closed), aci: aci, layer: layer, lineWeight: lw, thickness: thk))
             case .text(let p, let s, let h, let r, let ha, let va, let w, let ls):
-                emit(DXFEntity(kind: .text(tx(p), s, h * scaleAbs, r + ins.rotDeg, ha, va, w * scaleAbs, ls), aci: aci, layer: layer))
+                emit(DXFEntity(kind: .text(tx(p), s, h * scaleAbs, r + ins.rotDeg, ha, va, w * scaleAbs, ls), aci: aci, layer: layer, lineWeight: lw, thickness: thk))
             case .ellipse(let c, let mv, let ratio, let sa, let ea):
                 let cw = tx(c)
                 let endpoint = tx(CGPoint(x: c.x + mv.x, y: c.y + mv.y))
-                emit(DXFEntity(kind: .ellipse(cw, CGPoint(x: endpoint.x - cw.x, y: endpoint.y - cw.y), ratio, sa, ea), aci: aci, layer: layer))
+                emit(DXFEntity(kind: .ellipse(cw, CGPoint(x: endpoint.x - cw.x, y: endpoint.y - cw.y), ratio, sa, ea), aci: aci, layer: layer, lineWeight: lw, thickness: thk))
             case .spline(let cps, let deg, let knots, let closed):
-                emit(DXFEntity(kind: .spline(cps.map(tx), deg, knots, closed), aci: aci, layer: layer))
+                emit(DXFEntity(kind: .spline(cps.map(tx), deg, knots, closed), aci: aci, layer: layer, lineWeight: lw, thickness: thk))
             case .hatch(let h):
                 var hh = h
                 hh.boundaries = h.boundaries.map {
@@ -747,16 +850,16 @@ private func expandInserts(_ entities: [DXFEntity], blocks: [String: (entities: 
                         offset: txVec($0.offset),
                         dashes: $0.dashes.map { $0 * scaleAbs })
                 }
-                emit(DXFEntity(kind: .hatch(hh), aci: aci, layer: layer))
+                emit(DXFEntity(kind: .hatch(hh), aci: aci, layer: layer, lineWeight: lw, thickness: thk))
             case .dimension(let children):
-                emit(DXFEntity(kind: .dimension(children), aci: aci, layer: layer))
+                emit(DXFEntity(kind: .dimension(children), aci: aci, layer: layer, lineWeight: lw, thickness: thk))
             case .leader(let pts, let arrow):
-                emit(DXFEntity(kind: .leader(pts.map(tx), arrow * scaleAbs), aci: aci, layer: layer))
+                emit(DXFEntity(kind: .leader(pts.map(tx), arrow * scaleAbs), aci: aci, layer: layer, lineWeight: lw, thickness: thk))
             case .insert: break
             }
         }
         if ins.isDim {
-            out.append(DXFEntity(kind: .dimension(dimChildren), aci: e.aci, layer: e.layer))
+            out.append(DXFEntity(kind: .dimension(dimChildren), aci: e.aci, layer: e.layer, lineWeight: e.lineWeight, thickness: e.thickness))
         }
     }
     return out
@@ -764,9 +867,9 @@ private func expandInserts(_ entities: [DXFEntity], blocks: [String: (entities: 
 
 // MARK: - Bounds
 
-func computeBoundsForOne(_ e: DXFEntity) -> CGRect { computeBounds([e]) }
+public func computeBoundsForOne(_ e: DXFEntity) -> CGRect { computeBounds([e]) }
 
-func computeBounds(_ entities: [DXFEntity]) -> CGRect {
+public func computeBounds(_ entities: [DXFEntity]) -> CGRect {
     var minX = CGFloat.infinity, minY = CGFloat.infinity
     var maxX = -CGFloat.infinity, maxY = -CGFloat.infinity
     func extend(_ p: CGPoint) {
@@ -796,6 +899,15 @@ func computeBounds(_ entities: [DXFEntity]) -> CGRect {
                 }
             }
         case .polyline(let pts, _): pts.forEach(extend)
+        case .solid(let pts): pts.forEach(extend)
+        case .widePolyline(let verts, _):
+            // Inflate by max width / 2 so the trapezoid fits inside the bbox.
+            let maxW = verts.map { max($0.startWidth, $0.endWidth) }.max() ?? 0
+            let pad = maxW / 2
+            for v in verts {
+                extend(CGPoint(x: v.point.x - pad, y: v.point.y - pad))
+                extend(CGPoint(x: v.point.x + pad, y: v.point.y + pad))
+            }
         case .text(let p, let s, let h, let rotDeg, let hAlign, let vAlign, let wrapW, let lineSp):
             // Match the renderer's alignment math so fit-to-window doesn't crop text.
             let lines = max(1, s.components(separatedBy: "\n").count)

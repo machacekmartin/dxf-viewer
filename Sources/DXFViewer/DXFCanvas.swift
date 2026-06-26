@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import DXFViewerCore
 
 @MainActor
 final class ViewState: ObservableObject {
@@ -204,12 +205,18 @@ struct DXFCanvas: View {
         // World→screen transform. Y flips because world Y goes up, screen Y goes down.
         let transform = CGAffineTransform(a: s, b: 0, c: 0, d: -s, tx: cx - bcx * s, ty: cy + bcy * s)
         let selectionActive = !selection.isEmpty
-        // Selection-empty hot path: stroke ONE merged path per aci. Massive files pay
-        // O(colors), not O(entities), per frame for the geometry pass.
+        // Selection-empty hot path: stroke ONE merged path per (color, weight) bucket.
+        // Typical file: 1-3 weights × few colors → tens of draw calls, not thousands.
         if !selectionActive {
-            for (aci, cg) in rm.bulkStroke {
+            for (bucket, cg) in rm.bulkStroke {
                 let p = Path(cg).applying(transform)
-                ctx.stroke(p, with: .color(aciColor(aci)), lineWidth: 1)
+                ctx.stroke(p, with: .color(aciColor(bucket.aci)), lineWidth: screenLineWidth(for: bucket.lineWeight))
+            }
+            for (bucket, cg) in rm.bulkWideStroke {
+                let p = Path(cg).applying(transform)
+                ctx.stroke(p, with: .color(aciColor(bucket.aci)),
+                           style: StrokeStyle(lineWidth: wideStrokeScreenWidth(worldWidth: bucket.worldWidth, zoom: s),
+                                              lineCap: .butt, lineJoin: .miter, miterLimit: 4))
             }
             for (aci, cg) in rm.bulkFill {
                 let p = Path(cg).applying(transform)
@@ -219,13 +226,27 @@ struct DXFCanvas: View {
             return
         }
 
-        // Selection-active: per-entity bucketing into dim / normal / selected.
-        var stroke: [RenderMode: [Int: CGMutablePath]] = [.dim: [:], .normal: [:], .selected: [:]]
+        // Selection-active: per-entity bucketing into dim / selected, keyed by (aci, weight).
+        var stroke: [RenderMode: [DXFRenderModel.StrokeBucket: CGMutablePath]] = [.dim: [:], .normal: [:], .selected: [:]]
         var fill: [RenderMode: [Int: CGMutablePath]] = [.dim: [:], .normal: [:], .selected: [:]]
-        func bucket(_ d: inout [RenderMode: [Int: CGMutablePath]], mode: RenderMode, aci: Int) -> CGMutablePath {
-            if let p = d[mode]?[aci] { return p }
+        func strokeBucket(_ mode: RenderMode, _ key: DXFRenderModel.StrokeBucket) -> CGMutablePath {
+            if let p = stroke[mode]?[key] { return p }
             let p = CGMutablePath()
-            d[mode, default: [:]][aci] = p
+            stroke[mode, default: [:]][key] = p
+            return p
+        }
+        func fillBucket(_ mode: RenderMode, _ aci: Int) -> CGMutablePath {
+            if let p = fill[mode]?[aci] { return p }
+            let p = CGMutablePath()
+            fill[mode, default: [:]][aci] = p
+            return p
+        }
+        // Wide-stroke bucket also lives per-mode so selected concrete elements pop.
+        var wideStroke: [RenderMode: [DXFRenderModel.WideStrokeBucket: CGMutablePath]] = [.dim: [:], .normal: [:], .selected: [:]]
+        func wideStrokeBucket(_ mode: RenderMode, _ key: DXFRenderModel.WideStrokeBucket) -> CGMutablePath {
+            if let p = wideStroke[mode]?[key] { return p }
+            let p = CGMutablePath()
+            wideStroke[mode, default: [:]][key] = p
             return p
         }
         for entry in rm.entries {
@@ -234,19 +255,24 @@ struct DXFCanvas: View {
                 || selection.contains(.layer(entry.layer))
             let mode: RenderMode = isSel ? .selected : .dim
             switch entry.geometry {
-            case .stroke(let cg): bucket(&stroke, mode: mode, aci: entry.aci).addPath(cg)
-            case .fill(let cg): bucket(&fill, mode: mode, aci: entry.aci).addPath(cg)
+            case .stroke(let cg):
+                strokeBucket(mode, .init(aci: entry.aci, lineWeight: entry.lineWeight)).addPath(cg)
+            case .fill(let cg):
+                fillBucket(mode, entry.aci).addPath(cg)
+            case .wideStroke(let cg, let w):
+                wideStrokeBucket(mode, .init(aci: entry.aci, worldWidth: w)).addPath(cg)
             case .text: break
             }
         }
         // Draw dim, then selected, so selected wins overdraw.
         for m in [RenderMode.dim, .selected] {
             let alpha: Double = (m == .dim) ? 0.14 : 1.0
-            let width: CGFloat = (m == .selected) ? 2.0 : 1.0
             if let dict = stroke[m] {
-                for (aci, cg) in dict {
+                for (key, cg) in dict {
                     let p = Path(cg).applying(transform)
-                    ctx.stroke(p, with: .color(aciColor(aci).opacity(alpha)), lineWidth: width)
+                    let baseW = screenLineWidth(for: key.lineWeight)
+                    let w = (m == .selected) ? max(2.0, baseW * 1.5) : baseW
+                    ctx.stroke(p, with: .color(aciColor(key.aci).opacity(alpha)), lineWidth: w)
                 }
             }
             if let dict = fill[m] {
@@ -255,8 +281,35 @@ struct DXFCanvas: View {
                     ctx.fill(p, with: .color(aciColor(aci).opacity(alpha)))
                 }
             }
+            if let dict = wideStroke[m] {
+                for (key, cg) in dict {
+                    let p = Path(cg).applying(transform)
+                    let base = wideStrokeScreenWidth(worldWidth: key.worldWidth, zoom: s)
+                    let w = (m == .selected) ? max(base + 2, base * 1.4) : base
+                    ctx.stroke(p, with: .color(aciColor(key.aci).opacity(alpha)),
+                               style: StrokeStyle(lineWidth: w, lineCap: .butt, lineJoin: .miter, miterLimit: 4))
+                }
+            }
         }
         drawText(ctx: ctx, size: size, entries: rm.entries, mode: nil, transform: transform, s: s)
+    }
+
+    // DXF lineweight (hundredths of mm) → fixed screen-space stroke width.
+    // AutoCAD's LWDISPLAY behavior: lineweight is a print measurement, not world-scaled;
+    // zooming in doesn't fatten strokes. Clamp to ≥1px so hairline (0) stays visible.
+    private func screenLineWidth(for weight: Int) -> CGFloat {
+        let mm = CGFloat(weight) / 100
+        return max(1.0, mm * pointsPerMM())
+    }
+
+    // LWPOLYLINE constant width (world units) → screen-space stroke width.
+    // World-scaled when zoomed in (so the geometry stays proportional) but with a
+    // pixel floor so thick structural elements stay visibly thicker than 1-px thin
+    // lines at zoom-to-fit. minPx > 1.0 = a strict floor: concrete elements always
+    // read as heavier than dimension lines.
+    private func wideStrokeScreenWidth(worldWidth: CGFloat, zoom: CGFloat) -> CGFloat {
+        let minPx: CGFloat = 2.5
+        return max(minPx, worldWidth * zoom)
     }
 
     // Text gets per-entity transform + measurement; can't be batched. Selection state
