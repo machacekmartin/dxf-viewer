@@ -9,6 +9,28 @@
     <language>en</language>
 
     <item>
+      <title>Version 1.3.0</title>
+      <pubDate>Fri, 26 Jun 2026 09:32:00 +0000</pubDate>
+      <sparkle:version>8</sparkle:version>
+      <sparkle:shortVersionString>1.3.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[
+        <h2>1.3.0 — line thickness, polyline width, and filled SOLIDs</h2>
+        <p>DXF carries three orthogonal thickness concepts; this release handles all of them and surfaces them faithfully in the viewer.</p>
+        <ul>
+          <li><strong>Lineweight (DXF code 370).</strong> Honored on entities and layers, with the full ByLayer / ByBlock / Default resolution chain. Strokes are fixed-screen so thick lines stay readable at zoom-to-fit.</li>
+          <li><strong>Polyline width (codes 40 / 41 / 43).</strong> Constant-width LWPOLYLINEs render as thick strokes with mitred corners, scaling proportionally when you zoom in but never disappearing under a screen-pixel floor. Tapered variants fall back to filled trapezoid bands.</li>
+          <li><strong>SOLID / TRACE / 3DFACE.</strong> Filled triangles and quads — previously silently dropped — now render as filled polygons. Concrete elements (sloupy, vazníky) finally look like concrete, not like dimension lines.</li>
+        </ul>
+      ]]></description>
+      <enclosure
+        url="https://github.com/machacekmartin/dxf-viewer/releases/download/v1.3.0/DXFViewer-1.3.0.dmg"
+        sparkle:edSignature="ABehA+rTlh2lBYHN4fqibFgePiqL8jvPu2L9l81HHny0fWd27q4TtZZVZ6tWD80miEpR4cq0E2vRFllgnhexBA=="
+        length="2721159"
+        type="application/octet-stream" />
+    </item>
+
+    <item>
       <title>Version 1.2.0</title>
       <pubDate>Fri, 26 Jun 2026 07:08:00 +0000</pubDate>
       <sparkle:version>7</sparkle:version>
