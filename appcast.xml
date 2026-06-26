@@ -9,6 +9,23 @@
     <language>en</language>
 
     <item>
+      <title>Version 1.2.0</title>
+      <pubDate>Fri, 26 Jun 2026 07:08:00 +0000</pubDate>
+      <sparkle:version>7</sparkle:version>
+      <sparkle:shortVersionString>1.2.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+      <description><![CDATA[
+        <h2>1.2.0 — focus camera on selected layer</h2>
+        <p>Selecting a layer (or kind, or entity) in the layer panel now zooms and pans the canvas to frame it. Multi-select via ⌘-click reframes to the union of every selected item.</p>
+      ]]></description>
+      <enclosure
+        url="https://github.com/machacekmartin/dxf-viewer/releases/download/v1.2.0/DXFViewer-1.2.0.dmg"
+        sparkle:edSignature="UMgzcbdBwyTLWaWCL2Sfw2q9XbT78SqsyeNUvTYiYTKsxqJp1Gez01nZiUd6qLECOrrc9iK599nBkyQnXrv5Dw=="
+        length="2709827"
+        type="application/octet-stream" />
+    </item>
+
+    <item>
       <title>Version 1.1.2</title>
       <pubDate>Thu, 25 Jun 2026 12:40:00 +0000</pubDate>
       <sparkle:version>6</sparkle:version>
